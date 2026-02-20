@@ -8,8 +8,10 @@ else:
 
 # Actual main
 from src.overlay import start_overlay
+from src.logger import setup_logging
 
 def main():
+    setup_logging()
     start_overlay()
 
 if __name__ == "__main__":

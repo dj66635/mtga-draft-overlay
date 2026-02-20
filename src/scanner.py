@@ -2,8 +2,11 @@
 import json
 import re
 import sqlite3
+import logging
 from .constants import DRAFT_START_STRING_PREMIER, DRAFT_START_STRING_QUICK, DRAFT_PACK_STRING_PREMIER, DRAFT_END_STRING_PREMIER, EXPANSION_CODE_REGEX
-from .utils import detect_string, json_find, process_json, debug_print
+from .utils import detect_string, json_find, process_json
+
+logger = logging.getLogger(__name__)
 
 class DBQueries:
     def __init__(self, db_folder):
@@ -66,7 +69,7 @@ class ArenaScanner:
                     line = log.readline()
                     if not line:
                         break
-                    debug_print(f"Waiting for draft start: {line}")
+                    logger.debug(f"Waiting for draft start: {line}")
                     self.start_and_pack_offset = log.tell()
                     start_offset = detect_string(line, [DRAFT_START_STRING_PREMIER, DRAFT_START_STRING_QUICK])
                     if start_offset != -1:
@@ -75,10 +78,10 @@ class ArenaScanner:
                         event_name = json_find("EventName", event_data)
                         set_code = re.search(EXPANSION_CODE_REGEX, event_name) # extract 3 letter code expansion
                         self.db_handle = DBQueries(f"{self.db_folder}/{set_code.group()}.sqlite")
-                        debug_print(f"Opening DB {self.db_folder}/{set_code.group()}.sqlite")
+                        logger.debug(f"Opening DB {self.db_folder}/{set_code.group()}.sqlite")
                         return event_name # i see no harm exiting from here, we can only find pack or end events from now on
         except Exception as error:
-            print(f"Exception draft_start_search: {error}")
+            logger.exception(f"Exception draft_start_search: {error}")
         return event_name
     
 
@@ -93,7 +96,7 @@ class ArenaScanner:
                     line = log.readline()
                     if not line:
                         break
-                    debug_print(f"Waiting for pack: {line}")
+                    logger.debug(f"Waiting for pack: {line}")
                     self.start_and_pack_offset = log.tell()
                     string_offset = detect_string(line, [DRAFT_PACK_STRING_PREMIER])
                     if string_offset != -1:
@@ -104,10 +107,10 @@ class ArenaScanner:
                         for cardId in cardIds:
                             cards.append(self.db_handle.get_card(cardId))
                         cards.sort()
-                        debug_print(f"P{draft_data['SelfPack']}-P{draft_data['SelfPick']}: {cards}")
+                        logger.debug(f"P{draft_data['SelfPack']}-P{draft_data['SelfPick']}: {cards}")
                         ratings = [card.Rating for card in cards]
         except Exception as error:
-             print(f"Exception draft_pack_search: {error}")
+             logger.exception(f"Exception draft_pack_search: {error}")
              return [] # return empty in order to trigger a clear_boxes
         return ratings
 
@@ -123,9 +126,9 @@ class ArenaScanner:
                     self.end_offset = log.tell()
                     end_offset = detect_string(line, [DRAFT_END_STRING_PREMIER])
                     if end_offset != -1:
-                        debug_print(f"Found draft end: {line}")
+                        logger.debug(f"Found draft end: {line}")
                         return True # return right away (?)
         except Exception as error:
-            print(f"Exception draft_end_search: {error}")
+            logger.exception(f"Exception draft_end_search: {error}")
         return False
                     

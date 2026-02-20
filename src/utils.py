@@ -1,11 +1,5 @@
 import json
 from typing import List
-from .constants import DEBUG
-
-
-def debug_print(*args):
-    if DEBUG:
-        print("[DEBUG]", *args)
 
 
 def get_contrast_color(hex_color):
