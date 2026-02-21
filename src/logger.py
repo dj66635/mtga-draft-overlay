@@ -20,7 +20,7 @@ def setup_logging():
         backupCount=3,
         encoding="utf-8",
     )
-    file_handler.setLevel(logging.DEBUG)  # Always log everything
+    file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
 
     # ------------------

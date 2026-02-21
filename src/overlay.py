@@ -3,13 +3,10 @@ import tkinter.font as tkfont
 import ctypes
 import logging
 from .scanner import ArenaScanner
-from .constants import DB_FOLDER, ARENA_LOGS, RATING_COLOR, DEFAULT_COLOR
+from .constants import DB_FOLDER, ARENA_LOGS, RATING_COLOR, DEFAULT_COLOR, TRANSPARENT_COLOR, MAX_OPACITY
 from .utils import get_contrast_color
 
 logger = logging.getLogger(__name__)
-
-TRANSPARENT_COLOR = "magenta" # pick a color not used elsewhere
-MAX_OPACITY = 0.85
 
 class Overlay:
     def __init__(self, log_scanner):
@@ -161,9 +158,9 @@ class Overlay:
     def update_on_tick(self):	  
         # not in draft, search for the start. we need to load the db     
         if not self.log_scanner.in_draft: 
-            event = self.log_scanner.draft_start_search()
-            if event is not None:
-                logger.info(f"New draft: {event}")
+            set_code = self.log_scanner.draft_start_search()
+            if set_code is not None:
+                logger.info(f"New draft: {set_code}")
                 self.log_scanner.in_draft = True
 
         else: # in draft, we search for cards and the end
@@ -178,7 +175,7 @@ class Overlay:
                 self.log_scanner.in_draft = False
                 self.clear_boxes()
 
-        self.root.after(150, self.update_on_tick)
+        self.root.after(100, self.update_on_tick)
 
 
 def start_overlay():

@@ -7,8 +7,8 @@ else:
     load_dotenv(".env")
 
 # Actual main
-from src.overlay import start_overlay
 from src.logger import setup_logging
+from src.overlay import start_overlay
 
 def main():
     setup_logging()

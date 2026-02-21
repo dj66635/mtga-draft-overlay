@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 
 DEBUG = "--debug" in sys.argv
 ARENA_LOGS = os.getenv("ARENA_LOGS")
@@ -9,7 +10,8 @@ if not ARENA_LOGS or not DB_FOLDER:
 
 # ------------
 
-EXPANSION_CODE_REGEX = r"(?<=PremierDraft_)[A-Z]{3}(?=_\d+)"
+TRANSPARENT_COLOR = "magenta" # pick a color not used elsewhere
+MAX_OPACITY = 0.85
 
 # ------------
 
@@ -32,14 +34,12 @@ DEFAULT_COLOR = "#888888"
 
 # ------------
 
-DRAFT_START_STRING_PREMIER = "[UnityCrossThreadLogger]==> EventJoin "
-DRAFT_START_STRING_QUICK = "[UnityCrossThreadLogger]==> BotDraft_DraftStatus "
+EXPANSION_CODE_REGEX = re.compile(r"(?<=PremierDraft_)[A-Z]{3}(?=_\d+)")
 
+# DRAFT_START_STRING_PREMIER = "[UnityCrossThreadLogger]==> EventJoin "
 # DRAFT_PICK_STRING_PREMIER = "[UnityCrossThreadLogger]==> Event_PlayerDraftMakePick "
-# DRAFT_PICK_STRING_QUICK = "[UnityCrossThreadLogger]==> BotDraft_DraftPick "
-
 DRAFT_PACK_STRING_PREMIER = "[UnityCrossThreadLogger]Draft.Notify "
-
 DRAFT_END_STRING_PREMIER = "[UnityCrossThreadLogger]==> DraftCompleteDraft"
 
-
+# DRAFT_START_STRING_QUICK = "[UnityCrossThreadLogger]==> BotDraft_DraftStatus "
+# DRAFT_PICK_STRING_QUICK = "[UnityCrossThreadLogger]==> BotDraft_DraftPick "
