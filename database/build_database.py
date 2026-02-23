@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 load_dotenv()
 MTGA_DB_FOLDER = os.getenv("MTGA_DB_FOLDER")
 
+DB_PATH = "RatingsDB.sqlite"
+
 # Includes bonus sheets. Special guests are implicitly included as well for base set (SGP-XYZ)
 EXPANSION_SETS = { 
     "ECL": ["ECL"],
@@ -58,21 +60,17 @@ def find_mtga_file_backup(folder_path):
 
 
 
-def build_expansion_db(expansion):
-    db_path = f"{expansion}.sqlite"
-    csv_path = f"{expansion}TierList.csv"
-    set_codes = EXPANSION_SETS[expansion]
-
-    conn = sqlite3.connect(db_path)
+def add_expansions(expansions):
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     
-    cur.execute("DROP TABLE IF EXISTS Cards")
     cur.execute("""
-    CREATE TABLE Cards (
+    CREATE TABLE IF NOT EXISTS Cards (
         GrpId INTEGER PRIMARY KEY,
         Name TEXT NOT NULL,
         Rarity INTEGER NOT NULL,
         IsLand INTEGER NOT NULL,
+        ColorOrder INTEGER NOT NULL,
         Colors TEXT NOT NULL,
         CollectorNumber INTEGER NOT NULL,
         ExpansionCode TEXT,
@@ -83,69 +81,74 @@ def build_expansion_db(expansion):
     # dont put it before DROP because it'll work from here when the new db does not yet exist
     cur.execute(f"ATTACH DATABASE '{MTGA_DB_BACKUP_PATH}' AS mtgaDB;") 
 
-    placeholders = ",".join(["?"] * len(set_codes))
-    spg_value = f"SPG-{expansion}"
-    query = f"""
-    SELECT c.GrpId, l.Loc, c.Rarity, c.Order_LandLast, c.Colors, c.CollectorNumber, c.ExpansionCode
-    FROM mtgaDB.Cards c
-    JOIN mtgaDB.Localizations_enUS l
-        ON c.TitleId = l.LocId
-       AND l.Formatted = 1
-    WHERE c.ExpansionCode IN ({placeholders})
-    OR c.DigitalReleaseSet = ?
-    """
-    cur.execute(query, set_codes + [spg_value])
+    for expansion in expansions:
+        csv_path = f"{expansion}TierList.csv"
+        set_codes = EXPANSION_SETS[expansion]
 
-    rows = cur.fetchall()
+        placeholders = ",".join(["?"] * len(set_codes))
+        spg_value = f"SPG-{expansion}"
+        query = f"""
+        SELECT c.GrpId, l.Loc, c.Rarity, c.Order_LandLast, c.Order_ColorOrder, c.Colors, c.CollectorNumber, c.ExpansionCode
+        FROM mtgaDB.Cards c
+        JOIN mtgaDB.Localizations_enUS l
+            ON c.TitleId = l.LocId
+        AND l.Formatted = 1
+        WHERE c.ExpansionCode IN ({placeholders})
+        OR c.DigitalReleaseSet = ?
+        """
+        cur.execute(query, set_codes + [spg_value])
 
-    for grp_id, name, rarity, order_land_last, colors, collector_number_text, expansion_code in rows:
-        cleaned = clean_name(name)
-        is_land = order_land_last if order_land_last is not None else 0 # 1: true ; 0/None: false
+        rows = cur.fetchall()
+
+        for grp_id, name, rarity, order_land_last, order_color_order, colors, collector_number_text, expansion_code in rows:
+            cleaned = clean_name(name)
+            is_land = order_land_last if order_land_last is not None else 0 # 1: true ; 0/None: false
+            color_order = order_color_order if order_color_order is not None else 100 # will be ordered last, should not happen
+            try:
+                collector_number = int(collector_number_text)
+            except (ValueError, TypeError):
+                collector_number = 0
+
+            cur.execute("""
+                INSERT OR IGNORE INTO Cards (GrpId, Name, Rarity, IsLand, ColorOrder, Colors, CollectorNumber, ExpansionCode)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (grp_id, cleaned, rarity, is_land, color_order, colors, collector_number, expansion_code))
+
+    
+        # Apply ratings
         try:
-            collector_number = int(collector_number_text)
-        except (ValueError, TypeError):
-            collector_number = 0
+            with open(csv_path, newline='', encoding='utf-8') as csvfile:
+                reader = csv.reader(csvfile)
+                for row in reader:
+                    valid = [cell.strip() for cell in row
+                            if re.match(r'^[A-Fa-f][+-]?$|^.{3,}$', cell.strip())] # A+, or +3 chars
 
-        cur.execute("""
-            INSERT OR IGNORE INTO Cards (GrpId, Name, Rarity, IsLand, Colors, CollectorNumber, ExpansionCode)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (grp_id, cleaned, rarity, is_land, colors, collector_number, expansion_code))
+                    if len(valid) < 3:
+                        continue
 
-    cur.execute("DETACH DATABASE mtgaDB;")
+                    rating = valid[0]
+                    name_field = valid[2]
+                    cleaned = name_field.strip().strip('"').strip()
+                    names = [cleaned]
 
+                    if '//' in cleaned:
+                        parts = [part.strip() for part in cleaned.split('//')]
+                        names += parts
 
-    # Apply ratings
-    try:
-        with open(csv_path, newline='', encoding='utf-8') as csvfile:
-            reader = csv.reader(csvfile)
-            for row in reader:
-                valid = [cell.strip() for cell in row
-                        if re.match(r'^[A-Fa-f][+-]?$|^.{3,}$', cell.strip())] # A+, or +3 chars
-
-                if len(valid) < 3:
-                    continue
-
-                rating = valid[0]
-                name_field = valid[2]
-                cleaned = name_field.strip().strip('"').strip()
-                names = [cleaned]
-
-                if '//' in cleaned:
-                    parts = [part.strip() for part in cleaned.split('//')]
-                    names += parts
-
-                for name in names:
-                    cur.execute("""
-                        UPDATE Cards
-                        SET Rating = ?
-                        WHERE lower(Name) = lower(?)
-                    """, (rating, name))
-    except FileNotFoundError:
-        print(f"⚠️ CSV file missing for {expansion}, skipping ratings.")
+                    for name in names:
+                        cur.execute("""
+                            UPDATE Cards
+                            SET Rating = ?
+                            WHERE lower(Name) = lower(?)
+                        """, (rating, name))
+        except FileNotFoundError:
+            print(f"⚠️ CSV file missing for {expansion}, skipping ratings.")
+    
+        print(f"✅ Database for expansion {expansion} built successfully!")
 
     conn.commit()
+    cur.execute("DETACH DATABASE mtgaDB;")
     conn.close()
-    print(f"✅ Database for expansion {expansion} built successfully!")
 
 
 def main():
@@ -158,7 +161,7 @@ def main():
         return
 
     # If expansions passed as arguments, use only those
-    expansions_to_process = list(EXPANSION_SETS.keys())
+    expansions = list(EXPANSION_SETS.keys())
     if len(sys.argv) > 1:
         requested = [arg.upper() for arg in sys.argv[1:]]
         invalid = [exp for exp in requested if exp not in EXPANSION_SETS]
@@ -166,11 +169,10 @@ def main():
             print(f"❌ Unknown expansion(s): {invalid}")
             print(f"Available expansions: {list(EXPANSION_SETS.keys())}")
             return
-        expansions_to_process = requested
-        
-    for expansion in expansions_to_process:
-        print(f"Processing {expansion} with sets {EXPANSION_SETS[expansion]}")
-        build_expansion_db(expansion)
+        expansions = requested
+
+    print(f"Processing {expansions}...")
+    add_expansions(expansions)
     
     if os.path.exists(MTGA_DB_BACKUP_PATH):
         os.remove(MTGA_DB_BACKUP_PATH)

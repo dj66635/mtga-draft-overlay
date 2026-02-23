@@ -1,51 +1,35 @@
+import sqlite3 
+
 
 class Card:
-    def __init__(self, GrpId, Name, Rarity, IsLand, Colors, CollectorNumber, ExpansionCode, Rating):
-        self.GrpId = GrpId
-        self.Name = Name
-        self.Rarity = Rarity # 0: token, 1: land, 2: common, 3: uncommon, 4: rare, 5: mythic
-        self.IsLand = bool(IsLand) # 1: land ; 0: non-land
-        self.Colors = str(Colors).strip() if Colors is not None else None  # e.g. "1,3,4"; "2"; ""
-        self.CollectorNumber = CollectorNumber
-        self.ExpansionCode = ExpansionCode
-        self.Rating = Rating
-
-    # ----- The problem with lands ------
-    # Take TDM Evolving Wilds: rarity 2. Goes after Dismal Backwater, and before Scoured Barrens. 
-    # It means we could count its rarity as 1, but should we then downgrade rare lands' rarity by one as well?
-    # Does not look like from other samples. So we'll actually move rarity 1 ("land rarity") up one bracket (normalized_rarity())
-    # Now all regular lands are common and that could intefere with the color bucket ordering
-    # So we keep track of IsLand attribute to put them at the end, and just order by CollectorNumber among them
-    # Effectively, being a land can be though of as a "color class" in itself, that goes last in the bracket
-    def color_class(self):
-        # WUBRG (1-5), Color-less (6), Multi-color (7), Land (8)
-        if self.IsLand: return 8
-        if not self.Colors: return 6
-        if "," in self.Colors: return 7
-        try: 
-            return int(self.Colors)
-        except ValueError:
-            return 6
-    
-    def normalized_rarity(self):
-        if self.IsLand and self.Rarity == 1: return self.Rarity + 1
-        return self.Rarity
+    def __init__(self, grp_id, name, rarity, is_land, color_order, colors, collector_number, expansion_code, rating):
+        self.grp_id = grp_id
+        self.name = name
+        self.rarity = rarity  # 0: token, 1: land, 2: common, 3: uncommon, 4: rare, 5: mythic
+        self.is_land = bool(is_land)  # 1: land ; 0: non-land
+        self.color_order = color_order
+        self.colors = str(colors).strip() if colors is not None else None  # e.g. "1,3,4"; "2"; ""
+        self.collector_number = collector_number
+        self.expansion_code = expansion_code
+        self.rating = rating
     
     def __lt__(self, other):
-        # 1. Rarity (upgrading regular lands to common)
-        # 2. Color class (including "land" class last)
-        # 3. Collector Number (not GrpId since that won't work cross-expansion, like bonus sheets and SPGs)
-        if self.normalized_rarity() != other.normalized_rarity():
-            return self.Rarity > other.Rarity
-        if self.color_class() != other.color_class(): 
-            # WUBRG, then color-less, then multi-color, then lands
-            return self.color_class() < other.color_class() 
-        return self.CollectorNumber < other.CollectorNumber
+        if self.rarity != other.rarity:
+            return self.rarity > other.rarity
+        if self.is_land != other.is_land:
+            return self.is_land < other.is_land
+        if self.color_order != other.color_order: 
+            return self.color_order < other.color_order
+        return self.collector_number < other.collector_number
     
 
     def __str__(self):
-        return (f"Card(GrpId='{self.GrpId}', Name='{self.Name}', Rarity='{self.Rarity}', IsLand='{self.IsLand}', Colors='{self.Colors}', "
-                f"CollectorNumber='{self.CollectorNumber}', ExpansionCode='{self.ExpansionCode}', Rating='{self.Rating}')")
+        return (
+            f"Card(grp_id='{self.grp_id}', name='{self.name}', rarity='{self.rarity}', "
+            f"is_land='{self.is_land}', color_order='{self.color_order}', colors='{self.colors}', "
+            f"collector_number='{self.collector_number}', expansion_code='{self.expansion_code}', "
+            f"rating='{self.rating}')"
+        )
 
     def __repr__(self):
         return self.__str__()  
@@ -53,3 +37,21 @@ class Card:
     @staticmethod
     def list_to_string(card_list): # ensures list printing looks nice
         return "\n".join(str(card) for card in card_list)
+    
+
+class DBQueries:
+    def __init__(self, ratings_db_path):
+        self.ratings_db_path = ratings_db_path
+
+    def get_card(self, card_id):
+        conn = sqlite3.connect(self.ratings_db_path)
+        cur = conn.cursor()
+
+        cur.execute("SELECT * FROM Cards WHERE GrpId = ?", (card_id,))
+        (grp_id, name, rarity, is_land, color_order, colors, collector_number, expansion_code, rating) = cur.fetchone()
+
+        conn.close()
+        if grp_id and name:
+            return Card(grp_id, name, rarity, is_land, color_order, colors, collector_number, expansion_code, rating)
+        else:
+            return None

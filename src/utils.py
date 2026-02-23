@@ -1,7 +1,6 @@
 import json
 from typing import List
 
-
 def get_contrast_color(hex_color):
     hex_color = hex_color.lstrip("#")
     r = int(hex_color[0:2], 16)
@@ -11,7 +10,6 @@ def get_contrast_color(hex_color):
     # Perceived brightness formula
     brightness = (r * 299 + g * 587 + b * 114) / 1000
     return "black" if brightness > 128 else "white"
-
 
 def process_json(obj):
     """
@@ -28,7 +26,6 @@ def process_json(obj):
     else:
         return obj
 
-
 def json_find(key, obj):
     """
     Retrieve a value from a nested dictionary using a specified key.
@@ -44,11 +41,7 @@ def json_find(key, obj):
                     break
     return result
 
-
-
-def detect_string(
-    search_line: str, search_strings: List[str], replace: str = "_"
-) -> int:
+def detect_string(search_line: str, search_strings: List[str], replace: str = "_") -> int:
     """Search a line for a string and return the offset at the end of the string."""
     # Extend search strings with modified versions (replacing 'replace' character)
     modified_strings = search_strings + [
@@ -58,9 +51,7 @@ def detect_string(
     for string in modified_strings:
         if string in search_line:
             return search_line.find(string) + len(string)
-    # Return -1 if no match is found
-    return -1
-
+    return None
 
 
 def clean_string(input_string: str, uppercase: bool = True) -> str:

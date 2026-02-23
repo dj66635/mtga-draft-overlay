@@ -3,8 +3,9 @@ import tkinter.font as tkfont
 import ctypes
 import logging
 from .scanner import ArenaScanner
-from .constants import DB_FOLDER, ARENA_LOGS, RATING_COLOR, DEFAULT_COLOR, TRANSPARENT_COLOR, MAX_OPACITY
+from .constants import ARENA_FILE_PATH, RATINGS_DB_PATH, RATING_COLOR, DEFAULT_COLOR, TRANSPARENT_COLOR, MAX_OPACITY
 from .utils import get_contrast_color
+from .events import DraftPackEvent, DraftStartEvent, DraftEndEvent
 
 logger = logging.getLogger(__name__)
 
@@ -155,30 +156,24 @@ class Overlay:
             self.fade_in()
         self.fade_out_wait(callback=_draw_boxes)
         
+    
     def update_on_tick(self):	  
-        # not in draft, search for the start. we need to load the db     
-        if not self.log_scanner.in_draft: 
-            set_code = self.log_scanner.draft_start_search()
-            if set_code is not None:
-                logger.info(f"New draft: {set_code}")
-                self.log_scanner.in_draft = True
+        for event in self.log_scanner.poll_events():
+            if isinstance(event, DraftPackEvent):
+                logger.info(f"Ratings: {event.ratings}\n")
+                self.draw_boxes(event.ratings)
 
-        else: # in draft, we search for cards and the end
-            ratings = self.log_scanner.draft_pack_search() 
-            if ratings is not None:
-                logger.info(f"Ratings: {ratings}")
-                self.draw_boxes(ratings)
+            elif isinstance(event, DraftStartEvent):
+                logger.info(f"Draft started: {event.set_code}\n")
 
-            ended = self.log_scanner.draft_end_search()
-            if ended:
-                logger.info(f"Draft ended. GL!")
-                self.log_scanner.in_draft = False
+            elif isinstance(event, DraftEndEvent):
+                logger.info(f"Draft ended\n")
                 self.clear_boxes()
 
         self.root.after(100, self.update_on_tick)
 
 
 def start_overlay():
-    log_scanner = ArenaScanner(ARENA_LOGS, DB_FOLDER)
+    log_scanner = ArenaScanner(ARENA_FILE_PATH, RATINGS_DB_PATH)
     overlay = Overlay(log_scanner)
     overlay.start()

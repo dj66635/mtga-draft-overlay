@@ -3,10 +3,10 @@ import os
 import re
 
 DEBUG = "--debug" in sys.argv
-ARENA_LOGS = os.getenv("ARENA_LOGS")
-DB_FOLDER = os.getenv("DB_FOLDER")
-if not ARENA_LOGS or not DB_FOLDER:
-    raise ValueError("ARENA_LOGS or DB_FOLDER not set. Did you forget to load .env first?" )
+ARENA_FILE_PATH = os.getenv("ARENA_FILE_PATH")
+RATINGS_DB_PATH = os.getenv("RATINGS_DB_PATH")
+if not ARENA_FILE_PATH or not RATINGS_DB_PATH:
+    raise ValueError("ARENA_FILE_PATH or RATINGS_DB_PATH not set. Did you forget to load .env first?" )
 
 # ------------
 
@@ -36,7 +36,7 @@ DEFAULT_COLOR = "#888888"
 
 EXPANSION_CODE_REGEX = re.compile(r"(?<=PremierDraft_)[A-Z]{3}(?=_\d+)")
 
-# DRAFT_START_STRING_PREMIER = "[UnityCrossThreadLogger]==> EventJoin "
+DRAFT_START_STRING_PREMIER = "[UnityCrossThreadLogger]==> EventJoin "
 # DRAFT_PICK_STRING_PREMIER = "[UnityCrossThreadLogger]==> Event_PlayerDraftMakePick "
 DRAFT_PACK_STRING_PREMIER = "[UnityCrossThreadLogger]Draft.Notify "
 DRAFT_END_STRING_PREMIER = "[UnityCrossThreadLogger]==> DraftCompleteDraft"
