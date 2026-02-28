@@ -1,43 +1,75 @@
 import sqlite3 
-
+import re
+from .constants import TOKEN_TO_COLOR, COLOR_ORDER_TO_LIST
 
 class Card:
-    def __init__(self, grp_id, name, rarity, is_land, color_order, colors, collector_number, expansion_code, rating):
+    def __init__(self, grp_id, name, rarity, is_land, color_order, old_school_mana_text, types, collector_number, expansion_code, rating):
         self.grp_id = grp_id
         self.name = name
-        self.rarity = rarity  # 0: token, 1: land, 2: common, 3: uncommon, 4: rare, 5: mythic
-        self.is_land = bool(is_land)  # 1: land ; 0: non-land
+        self.rarity = rarity # 0: token, 1: land, 2: common, 3: uncommon, 4: rare, 5: mythic
+        self.is_land = bool(is_land) # 1: land ; 0: non-land
         self.color_order = color_order
-        self.colors = str(colors).strip() if colors is not None else None  # e.g. "1,3,4"; "2"; ""
+        self.old_school_mana_text = old_school_mana_text
+        self.types = [int(t.strip()) for t in types.split(",") if t.strip()] # 1: artifact, 2: creature, 3: enchantment, 4: instant, 5: land, 8: planeswalker, 10: sorcery, 11: kindred, 14: battle
         self.collector_number = collector_number
         self.expansion_code = expansion_code
         self.rating = rating
     
-    def __lt__(self, other):
-        if self.rarity != other.rarity:
-            return self.rarity > other.rarity
-        if self.is_land != other.is_land:
-            return self.is_land < other.is_land
-        if self.color_order != other.color_order: 
-            return self.color_order < other.color_order
-        return self.collector_number < other.collector_number
-    
+    def cost(self):
+        tokens = re.findall(r'o(\([^)]+\)|[^o]+)', self.old_school_mana_text)
+        result = []
+        for t in tokens:
+            t = t.strip()
+            # remove parentheses if present
+            if t.startswith("(") and t.endswith(")"):
+                t = t[1:-1]
+            # oX treated as 0 colorless
+            if t.upper() == "X":
+                result.append((TOKEN_TO_COLOR['C'], 0))
+            # hybrid number/color inside parentheses: 2/G -> take letter after slash
+            elif "/" in t:
+                color_part = t.split("/")[-1].upper()
+                result.append((TOKEN_TO_COLOR[color_part], 1))
+            # numeric token => colorless
+            elif t.isdigit():
+                result.append((TOKEN_TO_COLOR['C'], int(t)))
+            # single color
+            elif t.upper() in TOKEN_TO_COLOR:
+                result.append((TOKEN_TO_COLOR[t.upper()], 1))
+            else:
+                continue
+        return result
 
-    def __str__(self):
+    def cmc(self):
+        return sum(count for _, count in self.cost())
+    
+    def colors(self):
+        return COLOR_ORDER_TO_LIST[self.color_order]
+        
+    def sort_by_draft_criteria(self):
         return (
-            f"Card(grp_id='{self.grp_id}', name='{self.name}', rarity='{self.rarity}', "
-            f"is_land='{self.is_land}', color_order='{self.color_order}', colors='{self.colors}', "
-            f"collector_number='{self.collector_number}', expansion_code='{self.expansion_code}', "
-            f"rating='{self.rating}')"
+            -self.rarity,          # higher rarity first
+            self.is_land,          # False (0) before True (1)
+            self.color_order,
+            self.collector_number
+        )
+    
+    def sort_by_cost(self):
+        return (
+            self.cmc(),
+            self.color_order,
+            self.collector_number
         )
 
     def __repr__(self):
-        return self.__str__()  
+        # Automatically include all instance attributes
+        attrs = ", ".join(f"{k}={v!r}" for k, v in self.__dict__.items())
+        return f"{self.__class__.__name__}({attrs})"
     
     @staticmethod
     def list_to_string(card_list): # ensures list printing looks nice
         return "\n".join(str(card) for card in card_list)
-    
+
 
 class DBQueries:
     def __init__(self, ratings_db_path):
@@ -48,10 +80,10 @@ class DBQueries:
         cur = conn.cursor()
 
         cur.execute("SELECT * FROM Cards WHERE GrpId = ?", (card_id,))
-        (grp_id, name, rarity, is_land, color_order, colors, collector_number, expansion_code, rating) = cur.fetchone()
+        (grp_id, name, rarity, is_land, color_order, old_school_mana_text, types, collector_number, expansion_code, rating) = cur.fetchone()
 
         conn.close()
         if grp_id and name:
-            return Card(grp_id, name, rarity, is_land, color_order, colors, collector_number, expansion_code, rating)
+            return Card(grp_id, name, rarity, is_land, color_order, old_school_mana_text, types, collector_number, expansion_code, rating)
         else:
             return None

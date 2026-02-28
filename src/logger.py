@@ -15,7 +15,7 @@ def setup_logging():
     # File Handler (ALWAYS DEBUG)
     # ------------------
     file_handler = RotatingFileHandler(
-        "draft.log",
+        "overlay.log",
         maxBytes=5_000_000,
         backupCount=3,
         encoding="utf-8",

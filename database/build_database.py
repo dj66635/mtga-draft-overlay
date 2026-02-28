@@ -71,7 +71,8 @@ def add_expansions(expansions):
         Rarity INTEGER NOT NULL,
         IsLand INTEGER NOT NULL,
         ColorOrder INTEGER NOT NULL,
-        Colors TEXT NOT NULL,
+        OldSchoolManaText TEXT NOT NULL,
+        Types TEXT NOT NULL,
         CollectorNumber INTEGER NOT NULL,
         ExpansionCode TEXT,
         Rating TEXT
@@ -81,40 +82,33 @@ def add_expansions(expansions):
     # dont put it before DROP because it'll work from here when the new db does not yet exist
     cur.execute(f"ATTACH DATABASE '{MTGA_DB_BACKUP_PATH}' AS mtgaDB;") 
 
+    query = f"""
+    SELECT c.GrpId, l.Loc, c.Rarity, c.Order_LandLast, c.Order_ColorOrder, c.OldSchoolManaText, c.Types, c.CollectorNumber, c.ExpansionCode
+    FROM mtgaDB.Cards c
+    JOIN mtgaDB.Localizations_enUS l
+        ON c.TitleId = l.LocId
+    AND l.Formatted = 1
+    """
+    cur.execute(query)
+    rows = cur.fetchall()
+
+    for grp_id, name, rarity, order_land_last, order_color_order, old_school_mana_text, types, collector_number_text, expansion_code in rows:
+        cleaned = clean_name(name)
+        is_land = order_land_last if order_land_last is not None else 0 # 1: true ; 0/None: false
+        color_order = order_color_order if order_color_order is not None else 100 # will be ordered last, should not happen
+        try:
+            collector_number = int(collector_number_text)
+        except (ValueError, TypeError):
+            collector_number = 0
+
+        cur.execute("""
+            INSERT OR IGNORE INTO Cards (GrpId, Name, Rarity, IsLand, ColorOrder, OldSchoolManaText, Types, CollectorNumber, ExpansionCode)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (grp_id, cleaned, rarity, is_land, color_order, old_school_mana_text, types, collector_number, expansion_code))
+
+
     for expansion in expansions:
         csv_path = f"{expansion}TierList.csv"
-        set_codes = EXPANSION_SETS[expansion]
-
-        placeholders = ",".join(["?"] * len(set_codes))
-        spg_value = f"SPG-{expansion}"
-        query = f"""
-        SELECT c.GrpId, l.Loc, c.Rarity, c.Order_LandLast, c.Order_ColorOrder, c.Colors, c.CollectorNumber, c.ExpansionCode
-        FROM mtgaDB.Cards c
-        JOIN mtgaDB.Localizations_enUS l
-            ON c.TitleId = l.LocId
-        AND l.Formatted = 1
-        WHERE c.ExpansionCode IN ({placeholders})
-        OR c.DigitalReleaseSet = ?
-        """
-        cur.execute(query, set_codes + [spg_value])
-
-        rows = cur.fetchall()
-
-        for grp_id, name, rarity, order_land_last, order_color_order, colors, collector_number_text, expansion_code in rows:
-            cleaned = clean_name(name)
-            is_land = order_land_last if order_land_last is not None else 0 # 1: true ; 0/None: false
-            color_order = order_color_order if order_color_order is not None else 100 # will be ordered last, should not happen
-            try:
-                collector_number = int(collector_number_text)
-            except (ValueError, TypeError):
-                collector_number = 0
-
-            cur.execute("""
-                INSERT OR IGNORE INTO Cards (GrpId, Name, Rarity, IsLand, ColorOrder, Colors, CollectorNumber, ExpansionCode)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (grp_id, cleaned, rarity, is_land, color_order, colors, collector_number, expansion_code))
-
-    
         # Apply ratings
         try:
             with open(csv_path, newline='', encoding='utf-8') as csvfile:
