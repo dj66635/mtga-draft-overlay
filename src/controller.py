@@ -94,28 +94,28 @@ class OverlayController:
 
     def _handle_event(self, event):
         if isinstance(event, DraftPackEvent):
-            logger.info(f"Ratings: {event.ratings}\n")
+            logger.info(f"Ratings: {event.ratings}")
             self.draft_overlay.show_ratings(event.ratings)
 
         elif isinstance(event, DraftStartEvent):
-            logger.info(f"Draft started: {event.set_code}\n")
+            logger.info(f"Draft started: {event.set_code}")
 
         elif isinstance(event, DraftEndEvent):
-            logger.info("Draft ended\n")
+            logger.info("Draft ended")
             self.draft_overlay.clear()
 
         elif isinstance(event, DeckListEvent):
-            logger.info("Deck loaded\n")
+            logger.info("Deck loaded")
             self.deck_overlay.load_deck(event.deck)
 
         elif isinstance(event, DeckDrawEvent):
-            logger.info(f"Drawn {event.drawn_grp_ids}\n")
+            logger.info(f"Drawn {event.drawn_grp_ids}")
             for grp_id in event.drawn_grp_ids:  
-                self.scanner.deck.draw_card(grp_id)
+                self.scanner.context.deck.draw_card(grp_id)
                 self.deck_overlay.card_drawn(grp_id)
 
         elif isinstance(event, MatchEndEvent):
-            logger.info("Match ended\n")
+            logger.info("Match ended")
             self.deck_overlay.clear()
 
     # -----------------------------

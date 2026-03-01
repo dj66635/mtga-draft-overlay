@@ -12,39 +12,50 @@ from .constants import (
 )
 from .utils import detect_string
 from .events import DraftPackEvent, DraftStartEvent, DraftEndEvent, DeckListEvent, DeckDrawEvent, MatchEndEvent
+from .log_model import LogEntry, ArenaEntry
 
 logger = logging.getLogger(__name__)
+
+
+class MatchContext:
+    def __init__(self):
+        self.deck = Deck()
+        self.iid_to_grpid = {}
+        self.seat_id = 0
+        self.initial_hand_set = False
+        self.pre_mulligan_hand = None
+        self.mulliganed = False
+        
 
 class ArenaScanner:
     def __init__(self, arena_file_path, ratings_db_path):
         self.arena_file_path = arena_file_path
         self.arena_file_size = os.path.getsize(self.arena_file_path)
+
         self.ratings_db_path = ratings_db_path
         self.ratings_db_handle = DBQueries(self.ratings_db_path)
+
         with open(self.arena_file_path, "r", encoding="utf-8", errors="replace") as f: # avoid processing the whole file
             f.seek(0, 2) 
             self.offset = f.tell()
 
-        self._json_buffer = []
-        self._brace_depth = 0
+        self._json_buffer = None
 
         self.handlers = [
             self._handle_draft_pack,
             self._handle_draft_start,
             self._handle_draft_end,
+
             self._handle_decklist,
+
             self._handle_initial_hand, 
             self._handle_mulligan,
+
             self._handle_card_draw,
             self._handle_match_end
         ]
 
-        self.deck = Deck()
-        self.iid_to_grpid_cache = {}
-        self.seat_id = 0
-        self.pre_mulligan = None
-        self.waiting_for_mulligan_discards = False
-        self.initial_hand_set = False
+        self.context = MatchContext()
         
 
     def check_log_rotation(self):
@@ -68,253 +79,212 @@ class ArenaScanner:
                 # logger.debug(f"{line}")
                 self.offset = log.tell()
 
-                for handler in self.handlers:
-                    if (event := handler(line)) is not None:
-                        events.append(event)
+                entry = self.read_entry(line)
+                if entry:
+                    for handler in self.handlers:
+                        if (event := handler(entry)) is not None:
+                            events.append(event)
         return events
     
 
-    def _handle_draft_pack(self, line):
-        if (offset := detect_string(line, [DRAFT_PACK_STRING_PREMIER])) is not None:      
-            ratings = []
-            try:
-                cards = []
-                draft_data = json.loads(line[offset:])
-                card_ids = str(draft_data["PackCards"]).split(",")
-                cards = [self.ratings_db_handle.get_card(c_id) for c_id in card_ids]
-                cards.sort(key=lambda c: c.sort_by_draft_criteria())
-                logger.debug(f"P{draft_data['SelfPack']}-P{draft_data['SelfPick']}:\n{Card.list_to_string(cards)}\n")
-                ratings = [card.rating for card in cards]
-            except Exception as error:
-                logger.exception(f"_handle_draft_pack: {error}")
+    def read_entry(self, line: str):
+        """
+        Read a single log line. Handles:
+        - Plain text lines
+        - JSON lines (single-line or multi-line pretty-printed)
+        - Lines with a text prefix before JSON
+        """
 
-            return DraftPackEvent(ratings=ratings)
+        # If we're currently accumulating a multi-line JSON, append this line
+        if self._json_buffer is not None:
+            self._json_buffer.append(line)
+            json_text = "\n".join(self._json_buffer)
+            try:
+                json_obj = json.loads(json_text)
+                self._json_buffer = None
+                return LogEntry(json=json_obj)
+            except json.JSONDecodeError:
+                # JSON not complete yet
+                return None
+
+        # Not currently accumulating JSON: check if line contains JSON start
+        start_idx = line.find("{") # min((i for i in (line.find("{")) if i != -1), default=-1)
+
+        if start_idx == -1:
+            # Case 0: no JSON at all
+            return LogEntry(text=line)
+    
+        if start_idx >= 0:
+            prefix = line[:start_idx].rstrip()
+            json_part = line[start_idx:]
+            try:
+                json_obj = json.loads(json_part)
+                return LogEntry(json=json_obj, text=prefix)
+            except json.JSONDecodeError:
+                # could be multi-line
+                self._json_buffer = [line]
+                return LogEntry(text=prefix)
+        
+        return None
+
+
+    def _handle_draft_pack(self, entry: LogEntry):
+        if entry.text and detect_string(entry.text, [DRAFT_PACK_STRING_PREMIER]):
+            arena_entry = ArenaEntry(entry.json)
+            if arena_entry.pack_cards:
+                cards = [self.ratings_db_handle.get_card(grp_id) 
+                         for grp_id in arena_entry.pack_cards.split(",")]
+                cards.sort(key=lambda c: c.sort_by_draft_criteria())
+                logger.debug(f"P{arena_entry.self_pack}-P{arena_entry.self_pick}:\n{Card.list_to_string(cards)}: {entry.json}\n")
+                return DraftPackEvent(ratings=[card.rating for card in cards])
         return None
     
 
-    def _handle_draft_start(self, line):
-        if detect_string(line, [DRAFT_START_STRING_PREMIER]) is not None:
-            set_code = EXPANSION_CODE_REGEX.search(line)
-            if set_code:
-                return DraftStartEvent(set_code=set_code.group())
+    def _handle_draft_start(self, entry: LogEntry):
+        if entry.text and detect_string(entry.text, [DRAFT_START_STRING_PREMIER]):
+            request = entry.json.get("request")
+            if request:
+                set_code = EXPANSION_CODE_REGEX.search(request) # its a json with backslashes...
+                if set_code:
+                    return DraftStartEvent(set_code=set_code.group())
         return None
         
 
-    def _handle_draft_end(self, line):
-        if detect_string(line, [DRAFT_END_STRING_PREMIER]) is not None:
+    def _handle_draft_end(self, entry: LogEntry):
+        if entry.text and detect_string(entry.text, [DRAFT_END_STRING_PREMIER]):
             return DraftEndEvent()
         return None
     
-    
-    def _handle_decklist(self, line):
-        # TODO: BO3 EVENT
-        try:
-            raw_cards = None
 
-            if (messages := self.__parse_json_game_state_msgs(line)) is None: return None
+    def _handle_decklist(self, entry: LogEntry):
+        if entry.json:
+            deck_list = []
+            arena_entry = ArenaEntry(entry.json)
+            for msg in arena_entry.gre_messages:
+                self.update_seat_id(msg)
+                if msg.game_state: self.update_iid_cache(msg.game_state)
 
-            for msg in messages:
-                self.__update_seat_id(msg)
-
-                if (connect_resp := msg.get("connectResp")):
-                    raw_cards = connect_resp.get("deckMessage").get("deckCards")
-
-            if raw_cards is None:
-                return None
-
-            counts = Counter(raw_cards)
-            deck_cards = [DeckCard(self.ratings_db_handle.get_card(card_id), count) for card_id, count in counts.items()]
-            self.deck = Deck(deck_cards)
-            return DeckListEvent(self.deck)
-        
-        except Exception:
-            return None
-    
-
-    def _handle_mulligan(self, line):
-        try: 
-            if (log_entry := self.__accumulate_json(line)) is not None:
-                payload = log_entry.get("payload")
-
-                if payload is not None:
-                    mulligan_resp = payload.get("mulliganResp")
-                    if mulligan_resp is not None:
-                        decision = mulligan_resp.get("decision")
-                        if decision is not None:
-                            if decision == "MulliganOption_Mulligan":
-                                self.waiting_for_mulligan_discards = True
-
-                            if decision == "MulliganOption_AcceptHand":               
-                                self.initial_hand_set = True # no need to keep updating, just (possibly) waiting to commit
-
-                                if not self.waiting_for_mulligan_discards:
-                                    logger.debug("Initial hand set\n")
-                                    return DeckDrawEvent(self.pre_mulligan)
-                
-                    group_resp = payload.get("groupResp")
-                    if group_resp is not None:
-                        groups = group_resp.get("groups")
-                        if groups is not None:
-                            iids = groups[0].get("ids")
-                            if iids is not None:
-                                logger.debug("Initial hand set (after mulligan)\n")
-                                hand_grp_ids = [self.iid_to_grpid_cache.get(iid) for iid in iids if iid in self.iid_to_grpid_cache]
-                                return DeckDrawEvent(hand_grp_ids)
-                
-                return None
+                if msg.connect_resp and msg.connect_resp.deck_list():   
+                    deck_list = msg.connect_resp.deck_list()            
             
-        except Exception:
-            return None
-        
-        
-    def _handle_initial_hand(self, line):
-        try:
-            if self.initial_hand_set: return None
-            hand_grp_ids = []
+            # BO3
+            if arena_entry.client_payload and arena_entry.client_payload.deck_list():
+                deck_list = arena_entry.client_payload.deck_list()
 
-            if (messages := self.__parse_json_game_state_msgs(line)) is None: return None
-            
-            for msg in messages:
-                self.__update_seat_id(msg)
-                if (game_state := msg.get("gameStateMessage")):
-                    self.__update_iid_cache(game_state)
-                        
-                    for zone in game_state.get("zones", []):
-                        if zone.get("type") == "ZoneType_Hand" and zone.get("ownerSeatId") == self.seat_id:
-                            object_iids = zone.get("objectInstanceIds")
-                            if object_iids:
-                                hand_grp_ids = [self.iid_to_grpid_cache.get(iid) for iid in object_iids if iid in self.iid_to_grpid_cache]
-
-            if hand_grp_ids != []:
-                self.pre_mulligan = hand_grp_ids
-
-            return None
-        
-        except Exception:
-            return None
+            if deck_list:    
+                counts = Counter(deck_list)
+                deck_cards = [DeckCard(self.ratings_db_handle.get_card(grp_id), count) for grp_id, count in counts.items()]
+                self.context.deck = Deck(deck_cards)
+                logger.debug(f"Deck loaded\n {self.context.deck}: {entry.json}\n") # todo print deck
+                return DeckListEvent(self.context.deck)
+        return None
     
 
-    def _handle_card_draw(self, line):
-        try:
-            drawn_grp_ids = []
+    def _handle_mulligan(self, entry: LogEntry):
+        if entry.json:
+            arena_entry = ArenaEntry(entry.json)
+            payload = arena_entry.client_payload
+            if payload:
+                if payload.mulligan_decision() == "MulliganOption_Mulligan":
+                    self.context.mulliganed = True
 
-            if (messages := self.__parse_json_game_state_msgs(line)) is None: return None
+                elif payload.mulligan_decision() == "MulliganOption_AcceptHand":
+                    self.context.initial_hand_set = True
+                    if not self.context.mulliganed:
+                        logger.debug(f"Initial hand set {self.context.pre_mulligan_hand}: {entry.json}")
+                        return DeckDrawEvent(self.context.pre_mulligan_hand)
+            
+                if self.context.mulliganed and payload.group_response():
+                    hand_grpids = [self.context.iid_to_grpid.get(iid) 
+                                    for iid in payload.group_response()
+                                    if iid in self.context.iid_to_grpid]
+                    logger.debug(f"Initial hand set (after mulligan) {hand_grpids}: {entry.json}")
+                    return DeckDrawEvent(hand_grpids)
+        return None
+        
 
-            for msg in messages:
-                self.__update_seat_id(msg)
-                if (game_state := msg.get("gameStateMessage")):
-                    self.__update_iid_cache(game_state)
+    def _handle_initial_hand(self, entry: LogEntry):
+        if entry.json and not self.context.initial_hand_set:
+            arena_entry = ArenaEntry(entry.json)
 
-                    # zone map to decide on "Put" events
+            for msg in arena_entry.gre_messages:
+                self.update_seat_id(msg)
+
+                if msg.game_state:
+                    self.update_iid_cache(msg.game_state)
+
+                    for zone in msg.game_state.zones:
+                        if zone.type == "ZoneType_Hand" and zone.owner_seat_id == self.context.seat_id:
+                            hand_grpids = [self.context.iid_to_grpid.get(iid) 
+                                            for iid in zone.object_instance_ids
+                                            if iid in self.context.iid_to_grpid]
+                            if hand_grpids:
+                                self.context.pre_mulligan_hand = hand_grpids 
+                                # hand may be mulliganed, cannot commit yet
+        return None         
+    
+
+    def _handle_card_draw(self, entry: LogEntry):
+        if entry.json:
+            drawn_grpids = []
+            arena_entry = ArenaEntry(entry.json)
+
+            for msg in arena_entry.gre_messages:
+                self.update_seat_id(msg)
+
+                if msg.game_state:
+                    self.update_iid_cache(msg.game_state)
+
                     zone_map = {}
-                    for zone in game_state.get("zones", []):
-                        zone_map[zone.get("zoneId")] = zone.get("type")
+                    for zone in msg.game_state.zones:
+                        if zone.owner_seat_id == self.context.seat_id:
+                            zone_map[zone.zone_id] = zone.type
 
-                    # Scan annotations for draws or puts from library to hand
-                    for annotation in game_state.get("annotations", []):
-                        if "AnnotationType_ZoneTransfer" not in annotation.get("type", []):
-                            continue
+                    for annotation in msg.game_state.annotations: 
+                        # Transfers from Library to Hand with category Draw or Put
+                        if annotation.type == "AnnotationType_ZoneTransfer":
+                            for detail in annotation.details:
+                                if detail.key == "zone_src":
+                                    zone_src = zone_map.get(detail.value_int32)
 
-                        for detail in annotation.get("details", []):
-                            key = detail.get("key")
-                            if key == "zone_src":
-                                zone_src = detail.get("valueInt32", [None])[0]
-                            elif key == "zone_dest":
-                                zone_dest = detail.get("valueInt32", [None])[0]
-                            elif key == "category":
-                                category = detail.get("valueString", [None])[0]
-                        
-                        src_type = zone_map.get(zone_src)
-                        dest_type = zone_map.get(zone_dest)
+                                elif detail.key == "zone_dest":
+                                    zone_dest = zone_map.get(detail.value_int32)
 
-                        if src_type == "ZoneType_Library" and dest_type == "ZoneType_Hand" and category in ("Draw", "Put"):
-                            affected = annotation.get("affectedIds", [])
-                            if affected:
-                                grp_id = self.iid_to_grpid_cache.get(affected[0])
-                                if grp_id is not None:
-                                    drawn_grp_ids.append(grp_id)
-
-            if drawn_grp_ids == []:
-                return None                     
-            return DeckDrawEvent(drawn_grp_ids)
-        
-        except Exception:
-            return None
+                                elif detail.key == "category":
+                                    category = detail.value_string
  
+                            if zone_src == "ZoneType_Library" and zone_dest == "ZoneType_Hand" and category in ("Draw", "Put"):
+                                drawn_grpids.extend(self.context.iid_to_grpid.get(iid) 
+                                                    for iid in annotation.affected_ids 
+                                                    if iid in self.context.iid_to_grpid)
+                                # there could be more than one event so do not return here
+            if drawn_grpids:
+                return DeckDrawEvent(drawn_grpids)
+        return None
 
-    def __reset_state(self):
-        self.iid_to_grpid_cache = {}
-        self.seat_id = 0
-        self.pre_mulligan = None
-        self.waiting_for_mulligan_discards = False
-        self.initial_hand_set
     
-    def _handle_match_end(self, line):
-        try:
-            if (messages := self.__parse_json_game_state_msgs(line)) is None:
-                return None
-            
-            for msg in messages:
-                if msg.get("type") == "GREMessageType_IntermissionReq":
-                    intermission = msg.get("intermissionReq", {})
-                    result = intermission.get("result")
-                    if result:
-                        logger.debug("Match ended\n")
-                        self.__reset_state()
-                        return MatchEndEvent()
-            return None
-        
-        except Exception:
-            return None
-    
+    def _handle_match_end(self, entry: LogEntry):
+        if entry.json:
+            arena_entry = ArenaEntry(entry.json)
+            for msg in arena_entry.gre_messages:
+                if msg.result():
+                    logger.debug(f"Match ended: {entry.json}")
+                    self.context = MatchContext()
+                    return MatchEndEvent()
+        return None
 
-    def __parse_json_game_state_msgs(self, line):
-        try:
-            log_entry = json.loads(line)
-            gre_event = log_entry.get("greToClientEvent")
-            return gre_event.get("greToClientMessages")
-        except Exception:
-            return None
-    
-    def __update_seat_id(self, gre_event):
-        if gre_event.get("type") == "GREMessageType_GameStateMessage":
-            if (seat_ids := gre_event.get("systemSeatIds")):
-                if self.seat_id != seat_ids[0]:
-                    self.seat_id = seat_ids[0]
-                    logger.debug(f"Seat ID: {self.seat_id}\n")
-                    
 
-    def __update_iid_cache(self, game_state):
-        for obj in game_state.get("gameObjects", []):
+    def update_seat_id(self, gre_event):
+        if gre_event.type == "GREMessageType_GameStateMessage":
+            new_seat_id = gre_event.my_seat_id
+            if new_seat_id is not None and self.context.seat_id != new_seat_id:
+                self.context.seat_id = new_seat_id
+                logger.debug(f"Seat ID updated - {self.context.seat_id}")
+
+
+    def update_iid_cache(self, game_state):
+        for obj in game_state.game_objects:
             iid = obj.get("instanceId")
             grp_id = obj.get("grpId")
             if iid is not None and grp_id is not None:
-                self.iid_to_grpid_cache[iid] = grp_id
-
-
-    def __accumulate_json(self, line):
-        stripped = line.strip()
-
-        # If we're not currently buffering
-        if self._brace_depth == 0:
-            if not stripped.startswith("{"):
-                return None  # Not JSON
-            self._json_buffer = []
-        
-        # Count braces
-        self._brace_depth += stripped.count("{")
-        self._brace_depth -= stripped.count("}")
-
-        self._json_buffer.append(line)
-
-        # If balanced → complete JSON object
-        if self._brace_depth == 0 and self._json_buffer:
-            full_json = "".join(self._json_buffer)
-            self._json_buffer = []
-
-            try:
-                return json.loads(full_json)
-            except json.JSONDecodeError:
-                return None
-
-        return None
+                self.context.iid_to_grpid[iid] = grp_id

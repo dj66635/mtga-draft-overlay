@@ -109,9 +109,9 @@ COLOR_ORDER_TO_LIST = [
 
 EXPANSION_CODE_REGEX = re.compile(r"(?<=PremierDraft_)[A-Z]{3}(?=_\d+)")
 
-DRAFT_START_STRING_PREMIER = "[UnityCrossThreadLogger]==> EventJoin "
+DRAFT_START_STRING_PREMIER = "[UnityCrossThreadLogger]==> EventJoin"
 # DRAFT_PICK_STRING_PREMIER = "[UnityCrossThreadLogger]==> Event_PlayerDraftMakePick "
-DRAFT_PACK_STRING_PREMIER = "[UnityCrossThreadLogger]Draft.Notify "
+DRAFT_PACK_STRING_PREMIER = "[UnityCrossThreadLogger]Draft.Notify"
 DRAFT_END_STRING_PREMIER = "[UnityCrossThreadLogger]==> DraftCompleteDraft"
 
 # DRAFT_START_STRING_QUICK = "[UnityCrossThreadLogger]==> BotDraft_DraftStatus "
