@@ -20,7 +20,6 @@ MAX_OPACITY = 0.85
 DECK_HEIGHT = 20
 DECK_WIDTH = 130
 
-
 FONTS = {
     "rating":     ("Segoe UI",       8, "bold"),
     "emoji":      ("Segoe UI Emoji", 9        ),
@@ -60,11 +59,12 @@ TOKEN_TO_COLOR = {
 COLOR_TO_HEX = {
     'WHITE': "#FFFFFF",
     'BLUE' : "#87CEFA",
-    'BLACK': "#555555",
+    'BLACK': "#666666",
     'RED'  : "#CD5C5C",
     'GREEN': "#66CDAA",
-    'COLORLESS': "#AAAAAA"
+    'COLORLESS': "#B3B3B3"
 }
+NO_CARDS_LEFT = "#252525"
 
 COLOR_ORDER_TO_LIST = [
     ["WHITE"],        
@@ -96,8 +96,8 @@ COLOR_ORDER_TO_LIST = [
     ["BLUE", "BLACK", "GREEN"],
 
     ["WHITE", "BLUE", "BLACK", "RED"], # 25
-    [],
-    [],
+    [], # ["WHITE", "BLACK", "RED", "GREEN"]
+    [], # ["BLUE", "BLACK", "RED", "GREEN"]
     ["WHITE", "BLUE", "RED", "GREEN"],
     ["WHITE", "BLUE", "BLACK", "GREEN"],
 

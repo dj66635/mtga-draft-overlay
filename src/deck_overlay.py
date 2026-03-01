@@ -3,7 +3,8 @@ from .utils import blend_colors
 from .constants import (
     DECK_HEIGHT, 
     DECK_WIDTH,
-    FONTS
+    FONTS,
+    NO_CARDS_LEFT
 )
 from .overlay import BaseOverlay
 
@@ -15,7 +16,7 @@ class DeckOverlay(BaseOverlay):
         self.window.geometry("+0+90")
         
         self.deck = None
-        self.card_text_refs = {}
+        self.card_obj_refs = {}
 
         self.frame = tk.Frame(self.window, bg="black")
         self.frame.pack(padx=5, pady=5)
@@ -83,7 +84,7 @@ class DeckOverlay(BaseOverlay):
         for widget in self.frame.winfo_children():
             widget.destroy()
 
-        self.card_text_refs = {}
+        self.card_obj_refs = {}
         
         if not self.deck:
             return
@@ -96,28 +97,34 @@ class DeckOverlay(BaseOverlay):
         self.show(render)
 
     def card_drawn(self, grp_id):
-        if grp_id in self.card_text_refs:
+        if grp_id in self.card_obj_refs:
             dc = self.deck.get_card_by_id(grp_id)
-            canvas, text_id = self.card_text_refs[grp_id]
-            canvas.itemconfig(text_id, text=f"{dc.left}/{dc.total}")
-
+            canvas, text_id, count_id, box_ids = self.card_obj_refs[grp_id]
+            canvas.itemconfig(count_id, text=f"{dc.left}/{dc.total}")
+            if dc.left == 0:
+                canvas.itemconfig(text_id, fill="grey")
+                canvas.itemconfig(count_id, fill="grey")
+                for box_id in box_ids: canvas.itemconfig(box_id, fill=NO_CARDS_LEFT)
+                
     # --------------------------------------------------
 
     def _clear_content(self):
         for widget in self.frame.winfo_children():
             widget.destroy()
-        self.card_text_refs = {}
+        self.card_obj_refs = {}
 
     def _draw_item(self, canvas, grp_id, name, total, left, colors):
         canvas.delete("all")
         width = DECK_WIDTH
         height = DECK_HEIGHT
-
+       
+        box_ids = []
         if len(colors) == 1:
-            canvas.create_rectangle(
+            rect = canvas.create_rectangle(
                 0, 0, width, height,
                 fill=colors[0], outline=""
             )
+            box_ids.append(rect)
         else:
             n = len(colors)
             for y in range(height):
@@ -129,9 +136,9 @@ class DeckOverlay(BaseOverlay):
                         i = n - 2
                         t = 1
                     color = blend_colors(colors[i], colors[i + 1], t)
-                    canvas.create_line(x, y, x + 1, y, fill=color)
+                    box_ids.append(canvas.create_line(x, y, x + 1, y, fill=color))
 
-        canvas.create_text(
+        text_id = canvas.create_text(
             4, height / 2,
             text=name,
             fill="black",
@@ -139,7 +146,7 @@ class DeckOverlay(BaseOverlay):
             anchor="w",
         )
 
-        text_id = canvas.create_text(
+        count_id = canvas.create_text(
             width - 4,
             height / 2,
             text=f"{left}/{total}",
@@ -148,4 +155,4 @@ class DeckOverlay(BaseOverlay):
             anchor="e",
         )
 
-        self.card_text_refs[grp_id] = (canvas, text_id)
+        self.card_obj_refs[grp_id] = (canvas, text_id, count_id, box_ids)

@@ -16,9 +16,6 @@ class DraftEndEvent:
 @dataclass
 class DeckListEvent:
     deck: Deck
-    # creatures: list  # (name, total, left, colors)
-    # spells: list
-    # lands: list
 
 @dataclass
 class DeckDrawEvent:

@@ -8,19 +8,6 @@ class ArenaEntry: # TODO: should be splitted into three classes
     def __init__(self, raw: dict):
         self.raw = raw
 
-    # ---------- Top-level fields ----------
-    # @property
-    # def transaction_id(self):
-    #     return self.raw.get("transactionId")
-
-    # @property
-    # def request_id(self):
-    #     return self.raw.get("requestId")
-
-    # @property
-    # def timestamp(self):
-    #     return self.raw.get("timestamp")
-
     # ---------- GRE messages ----------
     @property
     def gre_messages(self):
@@ -99,14 +86,6 @@ class GREMessage:
     def my_seat_id(self):
         seats = self.system_seat_ids
         return seats[0] if seats else None
-    
-    # @property
-    # def msg_id(self):
-    #     return self.raw.get("msgId")
-
-    # @property
-    # def game_state_id(self):
-    #     return self.raw.get("gameStateId")
 
     # ---------- GameStateMessage ----------
     @property
@@ -166,18 +145,6 @@ class GameStateMessage:
     def annotations(self):
         annotations = self.raw.get("annotations", [])
         return [Annotation(a) for a in annotations]
-
-    # @property
-    # def turn_info(self):
-    #     return self.raw.get("turnInfo")
-
-    # @property
-    # def players(self):
-    #     return self.raw.get("players", [])
-
-    # @property
-    # def actions(self):
-    #     return self.raw.get("actions", [])
     
 
 # GREMessage.GameStateMessage.Zone

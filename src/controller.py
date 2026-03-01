@@ -30,6 +30,7 @@ class OverlayController:
         self.scanner = ArenaScanner(ARENA_FILE_PATH, RATINGS_DB_PATH)
 
         self._create_controls()
+        self.overlay_on = True
 
         self.draft_overlay = DraftOverlay()
         self.deck_overlay = DeckOverlay()
@@ -71,6 +72,9 @@ class OverlayController:
 
         if self.deck_overlay:
             self.deck_overlay.toggle()
+
+        self.overlay_on = not self.overlay_on
+        self.toggle_btn.config(bg="SystemButtonFace" if self.overlay_on else "lightgray")
 
     def shutdown(self):
         if self.deck_overlay:

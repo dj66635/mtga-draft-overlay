@@ -135,7 +135,7 @@ class ArenaScanner:
                 cards = [self.ratings_db_handle.get_card(grp_id) 
                          for grp_id in arena_entry.pack_cards.split(",")]
                 cards.sort(key=lambda c: c.sort_by_draft_criteria())
-                logger.debug(f"P{arena_entry.self_pack}-P{arena_entry.self_pick}:\n{Card.list_to_string(cards)}: {entry.json}\n")
+                logger.debug(f"P{arena_entry.self_pack}-P{arena_entry.self_pick}:\n{Card.list_to_string(cards)}: {entry.json}")
                 return DraftPackEvent(ratings=[card.rating for card in cards])
         return None
     
@@ -162,7 +162,6 @@ class ArenaScanner:
             arena_entry = ArenaEntry(entry.json)
             for msg in arena_entry.gre_messages:
                 self.update_seat_id(msg)
-                if msg.game_state: self.update_iid_cache(msg.game_state)
 
                 if msg.connect_resp and msg.connect_resp.deck_list():   
                     deck_list = msg.connect_resp.deck_list()            
@@ -175,7 +174,7 @@ class ArenaScanner:
                 counts = Counter(deck_list)
                 deck_cards = [DeckCard(self.ratings_db_handle.get_card(grp_id), count) for grp_id, count in counts.items()]
                 self.context.deck = Deck(deck_cards)
-                logger.debug(f"Deck loaded\n {self.context.deck}: {entry.json}\n") # todo print deck
+                logger.debug(f"Deck loaded\n {self.context.deck}: {entry.json}\n") # TODO: print deck
                 return DeckListEvent(self.context.deck)
         return None
     
@@ -195,7 +194,7 @@ class ArenaScanner:
                         return DeckDrawEvent(self.context.pre_mulligan_hand)
             
                 if self.context.mulliganed and payload.group_response():
-                    hand_grpids = [self.context.iid_to_grpid.get(iid) 
+                    hand_grpids = [self.context.iid_to_grpid.get(iid) # heres where we actually need the cache
                                     for iid in payload.group_response()
                                     if iid in self.context.iid_to_grpid]
                     logger.debug(f"Initial hand set (after mulligan) {hand_grpids}: {entry.json}")
@@ -279,7 +278,7 @@ class ArenaScanner:
             new_seat_id = gre_event.my_seat_id
             if new_seat_id is not None and self.context.seat_id != new_seat_id:
                 self.context.seat_id = new_seat_id
-                logger.debug(f"Seat ID updated - {self.context.seat_id}")
+                logger.debug(f"Seat ID updated {self.context.seat_id}")
 
 
     def update_iid_cache(self, game_state):
