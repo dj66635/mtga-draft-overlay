@@ -22,6 +22,10 @@ class Deck:
         spells = [dc.printable() for dc in sorted_cards if 2 not in dc.card.types and not dc.card.is_land]
         lands = [dc.printable() for dc in sorted_cards if dc.card.is_land]
         return creatures, spells, lands
+    
+    def __repr__(self):
+        return f"<Deck {len(self.cards)} cards: [{', '.join(f'{dc.card.name}: {dc.total}' for dc in self.cards)}]>"
+
 
 
 class DeckCard:

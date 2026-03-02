@@ -5,6 +5,7 @@ from typing import List
 def shorten(name, to=18):
     return name if len(name) < to else name[:(to-1)] + "..."
 
+
 def get_contrast_color(hex_color):
     hex_color = hex_color.lstrip("#")
     r = int(hex_color[0:2], 16)
@@ -23,6 +24,7 @@ def blend_colors(color1, color2, t):
     g = int(c1[1] + (c2[1] - c1[1]) * t)
     b = int(c1[2] + (c2[2] - c1[2]) * t)
     return f"#{r:02X}{g:02X}{b:02X}"
+
 
 def process_json(obj):
     """
@@ -67,11 +69,3 @@ def detect_string(search_line: str, search_strings: List[str], replace: str = "_
         if string in search_line:
             return search_line.find(string) + len(string)
     return None
-
-
-def clean_string(input_string: str, uppercase: bool = True) -> str:
-    """Cleans a string by removing unwanted characters"""
-    unwanted_chars = [" ", ".", "/", "_"]
-    for char in unwanted_chars:
-        input_string = input_string.replace(char, "")
-    return input_string.upper() if uppercase else input_string

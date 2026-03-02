@@ -12,7 +12,7 @@ from .constants import (
 )
 from .utils import detect_string
 from .events import DraftPackEvent, DraftStartEvent, DraftEndEvent, DeckListEvent, DeckDrawEvent, MatchEndEvent
-from .log_model import LogEntry, ArenaEntry
+from .log_model import LogEntry, GREEntry, DraftEntry, ClientEntry
 
 logger = logging.getLogger(__name__)
 
@@ -130,12 +130,12 @@ class ArenaScanner:
 
     def _handle_draft_pack(self, entry: LogEntry):
         if entry.text and detect_string(entry.text, [DRAFT_PACK_STRING_PREMIER]):
-            arena_entry = ArenaEntry(entry.json)
-            if arena_entry.pack_cards:
+            draft_entry = DraftEntry(entry.json)
+            if draft_entry.pack_cards:
                 cards = [self.ratings_db_handle.get_card(grp_id) 
-                         for grp_id in arena_entry.pack_cards.split(",")]
+                         for grp_id in draft_entry.pack_cards.split(",")]
                 cards.sort(key=lambda c: c.sort_by_draft_criteria())
-                logger.debug(f"P{arena_entry.self_pack}-P{arena_entry.self_pick}:\n{Card.list_to_string(cards)}: {entry.json}")
+                logger.debug(f"P{draft_entry.self_pack}-P{draft_entry.self_pick}:\n{Card.list_to_string(cards)}: {entry.json}")
                 return DraftPackEvent(ratings=[card.rating for card in cards])
         return None
     
@@ -159,16 +159,17 @@ class ArenaScanner:
     def _handle_decklist(self, entry: LogEntry):
         if entry.json:
             deck_list = []
-            arena_entry = ArenaEntry(entry.json)
-            for msg in arena_entry.gre_messages:
+            gre_entry = GREEntry(entry.json)
+            for msg in gre_entry.gre_messages:
                 self.update_seat_id(msg)
 
                 if msg.connect_resp and msg.connect_resp.deck_list():   
                     deck_list = msg.connect_resp.deck_list()            
             
             # BO3
-            if arena_entry.client_payload and arena_entry.client_payload.deck_list():
-                deck_list = arena_entry.client_payload.deck_list()
+            client_entry = ClientEntry(entry.json)
+            if client_entry.client_payload and client_entry.client_payload.deck_list():
+                deck_list = client_entry.client_payload.deck_list()
 
             if deck_list:    
                 counts = Counter(deck_list)
@@ -181,8 +182,8 @@ class ArenaScanner:
 
     def _handle_mulligan(self, entry: LogEntry):
         if entry.json:
-            arena_entry = ArenaEntry(entry.json)
-            payload = arena_entry.client_payload
+            client_entry = ClientEntry(entry.json)
+            payload = client_entry.client_payload
             if payload:
                 if payload.mulligan_decision() == "MulliganOption_Mulligan":
                     self.context.mulliganed = True
@@ -204,9 +205,9 @@ class ArenaScanner:
 
     def _handle_initial_hand(self, entry: LogEntry):
         if entry.json and not self.context.initial_hand_set:
-            arena_entry = ArenaEntry(entry.json)
+            gre_entry = GREEntry(entry.json)
 
-            for msg in arena_entry.gre_messages:
+            for msg in gre_entry.gre_messages:
                 self.update_seat_id(msg)
 
                 if msg.game_state:
@@ -226,9 +227,9 @@ class ArenaScanner:
     def _handle_card_draw(self, entry: LogEntry):
         if entry.json:
             drawn_grpids = []
-            arena_entry = ArenaEntry(entry.json)
+            gre_entry = GREEntry(entry.json)
 
-            for msg in arena_entry.gre_messages:
+            for msg in gre_entry.gre_messages:
                 self.update_seat_id(msg)
 
                 if msg.game_state:
@@ -252,11 +253,17 @@ class ArenaScanner:
                                 elif detail.key == "category":
                                     category = detail.value_string
  
+                            # there could be more than one annotation with events so do not return here
                             if zone_src == "ZoneType_Library" and zone_dest == "ZoneType_Hand" and category in ("Draw", "Put"):
                                 drawn_grpids.extend(self.context.iid_to_grpid.get(iid) 
                                                     for iid in annotation.affected_ids 
                                                     if iid in self.context.iid_to_grpid)
-                                # there could be more than one event so do not return here
+                                
+                            if zone_src == "ZoneType_Library" and zone_dest == "ZoneType_Graveyard" and category in ("Mill"):
+                                drawn_grpids.extend(self.context.iid_to_grpid.get(iid) 
+                                                    for iid in annotation.affected_ids 
+                                                    if iid in self.context.iid_to_grpid)
+                               
             if drawn_grpids:
                 return DeckDrawEvent(drawn_grpids)
         return None
@@ -264,8 +271,8 @@ class ArenaScanner:
     
     def _handle_match_end(self, entry: LogEntry):
         if entry.json:
-            arena_entry = ArenaEntry(entry.json)
-            for msg in arena_entry.gre_messages:
+            gre_entry = GREEntry(entry.json)
+            for msg in gre_entry.gre_messages:
                 if msg.result():
                     logger.debug(f"Match ended: {entry.json}")
                     self.context = MatchContext()
@@ -283,7 +290,5 @@ class ArenaScanner:
 
     def update_iid_cache(self, game_state):
         for obj in game_state.game_objects:
-            iid = obj.get("instanceId")
-            grp_id = obj.get("grpId")
-            if iid is not None and grp_id is not None:
-                self.context.iid_to_grpid[iid] = grp_id
+            if obj.instance_id is not None and obj.grp_id is not None:
+                self.context.iid_to_grpid[obj.instance_id] = obj.grp_id

@@ -4,29 +4,10 @@ class LogEntry:
         self.json = json
 
 
-class ArenaEntry: # TODO: should be splitted into three classes
+class DraftEntry:
     def __init__(self, raw: dict):
         self.raw = raw
-
-    # ---------- GRE messages ----------
-    @property
-    def gre_messages(self):
-        event = self.raw.get("greToClientEvent")
-        if not event:
-            return []
-
-        messages = event.get("greToClientMessages", [])
-        return [GREMessage(m) for m in messages]
     
-    # -------- Client messages --------
-    @property
-    def client_payload(self):
-        payload = self.raw.get("payload")
-        if payload:
-            return ClientPayload(payload)
-        return None
-    
-    # -------- Draft messages ---------
     @property
     def self_pick(self):
         return self.raw.get("SelfPick")
@@ -38,9 +19,21 @@ class ArenaEntry: # TODO: should be splitted into three classes
     @property
     def pack_cards(self):
         return self.raw.get("PackCards")
+    
 
+class ClientEntry:
+    def __init__(self, raw: dict):
+        self.raw = raw
 
-# ArenaEntry.ClientPayload
+    @property
+    def client_payload(self):
+        payload = self.raw.get("payload")
+        if payload:
+            return ClientPayload(payload)
+        return None
+    
+
+# ClientEntry.ClientPayload
 class ClientPayload:
     def __init__(self, raw: dict):
         self.raw = raw
@@ -67,9 +60,23 @@ class ClientPayload:
             if deck:
                 return deck.get("deckCards", [])
         return None
-                
 
-# ArenaEntry.GREMessage
+
+class GREEntry:
+    def __init__(self, raw: dict):
+        self.raw = raw
+
+    @property
+    def gre_messages(self):
+        event = self.raw.get("greToClientEvent")
+        if not event:
+            return []
+
+        messages = event.get("greToClientMessages", [])
+        return [GREMessage(m) for m in messages]
+
+
+# GREEntry.GREMessage
 class GREMessage:
     def __init__(self, raw: dict):
         self.raw = raw
@@ -139,13 +146,28 @@ class GameStateMessage:
 
     @property
     def game_objects(self):
-        return self.raw.get("gameObjects", [])
+        game_objects = self.raw.get("gameObjects", [])
+        return [GameObject(g) for g in game_objects]
 
     @property
     def annotations(self):
         annotations = self.raw.get("annotations", [])
         return [Annotation(a) for a in annotations]
     
+    
+# GREMessage.GameStateMessage.GameObject
+class GameObject:
+    def __init__(self, raw: dict):
+        self.raw = raw
+
+    @property
+    def instance_id(self):
+        return self.raw.get("instanceId")
+    
+    @property
+    def grp_id(self):
+        return self.raw.get("grpId")
+
 
 # GREMessage.GameStateMessage.Zone
 class Zone:
