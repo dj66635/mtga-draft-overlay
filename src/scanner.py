@@ -224,7 +224,7 @@ class ArenaScanner:
         return None         
     
 
-    def _handle_card_draw(self, entry: LogEntry):
+    def _handle_card_draw(self, entry: LogEntry): # actually, any "move from library" type of event
         if entry.json:
             drawn_grpids = []
             gre_entry = GREEntry(entry.json)
@@ -241,7 +241,7 @@ class ArenaScanner:
                             zone_map[zone.zone_id] = zone.type
 
                     for annotation in msg.game_state.annotations: 
-                        # Transfers from Library to Hand with category Draw or Put
+                        # Transfers from Library to Anywhere
                         if annotation.type == "AnnotationType_ZoneTransfer":
                             for detail in annotation.details:
                                 if detail.key == "zone_src":
@@ -250,20 +250,15 @@ class ArenaScanner:
                                 elif detail.key == "zone_dest":
                                     zone_dest = zone_map.get(detail.value_int32)
 
-                                elif detail.key == "category":
-                                    category = detail.value_string
+                                # elif detail.key == "category":
+                                #     category = detail.value_string
  
                             # there could be more than one annotation with events so do not return here
-                            if zone_src == "ZoneType_Library" and zone_dest == "ZoneType_Hand" and category in ("Draw", "Put"):
+                            if zone_src == "ZoneType_Library" and zone_dest != "ZoneType_Library":
                                 drawn_grpids.extend(self.context.iid_to_grpid.get(iid) 
                                                     for iid in annotation.affected_ids 
                                                     if iid in self.context.iid_to_grpid)
                                 
-                            if zone_src == "ZoneType_Library" and zone_dest == "ZoneType_Graveyard" and category in ("Mill"):
-                                drawn_grpids.extend(self.context.iid_to_grpid.get(iid) 
-                                                    for iid in annotation.affected_ids 
-                                                    if iid in self.context.iid_to_grpid)
-                               
             if drawn_grpids:
                 return DeckDrawEvent(drawn_grpids)
         return None

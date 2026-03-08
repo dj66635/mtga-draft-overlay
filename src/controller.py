@@ -113,7 +113,7 @@ class OverlayController:
             self.deck_overlay.load_deck(event.deck)
 
         elif isinstance(event, DeckDrawEvent):
-            logger.info(f"Drawn {event.drawn_grp_ids}")
+            logger.info(f"Removed from deck: {event.drawn_grp_ids}")
             for grp_id in event.drawn_grp_ids:  
                 self.scanner.context.deck.draw_card(grp_id)
                 self.deck_overlay.card_drawn(grp_id)

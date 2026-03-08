@@ -16,6 +16,7 @@ DB_PATH = "RatingsDB.sqlite"
 
 # Includes bonus sheets. Special guests are implicitly included as well for base set (SGP-XYZ)
 EXPANSION_SETS = { 
+    "TMT": ["TMT"],
     "ECL": ["ECL"],
     "TLA": ["TLA"],
     "SPM": ["SPM", "MAR"], # TODO: weird card naming

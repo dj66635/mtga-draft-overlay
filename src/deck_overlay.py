@@ -13,7 +13,7 @@ class DeckOverlay(BaseOverlay):
     def __init__(self):
         super().__init__(background="black")
 
-        self.window.geometry("+0+90")
+        self.window.geometry("+0+100")
         
         self.deck = None
         self.card_obj_refs = {}
