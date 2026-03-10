@@ -5,6 +5,9 @@ from typing import List
 def shorten(name, to=18):
     return name if len(name) < to else name[:(to-1)] + "..."
 
+def hex_to_rgb(hex_color):
+    hex_color = hex_color.lstrip("#")
+    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
 def get_contrast_color(hex_color):
     hex_color = hex_color.lstrip("#")

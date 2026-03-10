@@ -24,3 +24,17 @@ class DeckDrawEvent:
 @dataclass
 class MatchEndEvent:
     pass
+
+# --------
+
+@dataclass
+class OppDeckSetEvent:
+    deck: Deck
+
+@dataclass
+class OppDeckClearEvent:
+    pass
+
+@dataclass
+class OppDeckResetEvent:
+    pass

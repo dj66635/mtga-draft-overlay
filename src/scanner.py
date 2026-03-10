@@ -28,12 +28,11 @@ class MatchContext:
         
 
 class ArenaScanner:
-    def __init__(self, arena_file_path, ratings_db_path):
+    def __init__(self, arena_file_path):
         self.arena_file_path = arena_file_path
         self.arena_file_size = os.path.getsize(self.arena_file_path)
 
-        self.ratings_db_path = ratings_db_path
-        self.ratings_db_handle = DBQueries(self.ratings_db_path)
+        self.ratings_db_handle = DBQueries()
 
         with open(self.arena_file_path, "r", encoding="utf-8", errors="replace") as f: # avoid processing the whole file
             f.seek(0, 2) 
@@ -174,7 +173,7 @@ class ArenaScanner:
             if deck_list:    
                 counts = Counter(deck_list)
                 deck_cards = [DeckCard(self.ratings_db_handle.get_card(grp_id), count) for grp_id, count in counts.items()]
-                self.context.deck = Deck(deck_cards)
+                self.context.deck = Deck(cards = deck_cards)
                 logger.debug(f"Deck loaded\n {self.context.deck}: {entry.json}\n") # TODO: print deck
                 return DeckListEvent(self.context.deck)
         return None

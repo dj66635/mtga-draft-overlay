@@ -4,6 +4,7 @@ import logging
 from .scanner import ArenaScanner
 from .draft_overlay import DraftOverlay
 from .deck_overlay import DeckOverlay
+from .opp_deck_selector import OppDeckSelector
 from .events import (
     DraftPackEvent,
     DraftStartEvent,
@@ -11,29 +12,34 @@ from .events import (
     DeckListEvent,
     DeckDrawEvent,
     MatchEndEvent,
+    OppDeckSetEvent,
+    OppDeckClearEvent,
+    OppDeckResetEvent
 )
 from .constants import (
     ARENA_FILE_PATH, 
-    RATINGS_DB_PATH, 
     TRANSPARENT_COLOR,
-    FONTS
+    FONTS,
+    DECK_WIDTH
 )
 
 logger = logging.getLogger(__name__)
-
 
 class OverlayController:
     def __init__(self):
         self.root = tk.Tk()
         self.root.withdraw()  # controller doesn't render anything
 
-        self.scanner = ArenaScanner(ARENA_FILE_PATH, RATINGS_DB_PATH)
+        self.scanner = ArenaScanner(ARENA_FILE_PATH)
 
         self._create_controls()
         self.overlay_on = True
 
-        self.draft_overlay = DraftOverlay()
-        self.deck_overlay = DeckOverlay()
+        self.draft_overlay = DraftOverlay(size_x = self.root.winfo_screenwidth(), size_y = self.root.winfo_screenheight())
+        self.deck_overlay = DeckOverlay(0, 100)
+        self.opp_deck_overlay = DeckOverlay(self.root.winfo_screenwidth()-DECK_WIDTH-10, 100, fade_step=0.1, fade_delay=10, manual_mode=True)
+        self.opp_deck_selector = OppDeckSelector(self.root.winfo_screenwidth()-DECK_WIDTH-10, 0, self._opp_deck_set)
+        self.overlays = [self.draft_overlay, self.deck_overlay, self.opp_deck_overlay, self.opp_deck_selector]
 
         self.root.after(100, self._tick)
 
@@ -67,21 +73,16 @@ class OverlayController:
 
 
     def toggle_overlays(self):
-        if self.draft_overlay:
-            self.draft_overlay.toggle()
-
-        if self.deck_overlay:
-            self.deck_overlay.toggle()
+        for overlay in self.overlays: 
+            overlay.toggle()
 
         self.overlay_on = not self.overlay_on
         self.toggle_btn.config(bg="SystemButtonFace" if self.overlay_on else "lightgray")
 
-    def shutdown(self):
-        if self.deck_overlay:
-            self.deck_overlay.destroy()
 
-        if self.draft_overlay:
-            self.draft_overlay.destroy()
+    def shutdown(self):
+        for overlay in self.overlays: 
+            overlay.destroy()
 
         self.controls.destroy()
         self.root.destroy()
@@ -116,11 +117,25 @@ class OverlayController:
             logger.info(f"Removed from deck: {event.drawn_grp_ids}")
             for grp_id in event.drawn_grp_ids:  
                 self.scanner.context.deck.draw_card(grp_id)
-                self.deck_overlay.card_drawn(grp_id)
+                self.deck_overlay.refresh_card_count(grp_id)
 
         elif isinstance(event, MatchEndEvent):
-            logger.info("Match ended")
+            logger.info("Match ended") # right now i dont differentiate between "game" and "match" which would be useful for OppDeckEvents
             self.deck_overlay.clear()
+
+     
+    def _opp_deck_set(self, event):
+        if isinstance(event, OppDeckSetEvent):
+            logger.info("Opponent deck set")
+            self.opp_deck_overlay.load_deck(event.deck)
+
+        if isinstance(event, OppDeckClearEvent):
+            logger.info("Opponent deck cleared")
+            self.opp_deck_overlay.clear()
+
+        if isinstance(event, OppDeckResetEvent):
+            logger.info("Opponent deck reset")
+            self.opp_deck_overlay.refresh_card_counts()
 
     # -----------------------------
 

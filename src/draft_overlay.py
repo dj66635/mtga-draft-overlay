@@ -13,12 +13,8 @@ from .overlay import BaseOverlay
 
 
 class DraftOverlay(BaseOverlay):
-    def __init__(self):
-        super().__init__(background=TRANSPARENT_COLOR)
-        
-        screen_width = self.window.winfo_screenwidth()
-        screen_height = self.window.winfo_screenheight()
-        self.window.geometry(f"{screen_width}x{screen_height}+0+0")
+    def __init__(self, x=0, y=0, size_x=0, size_y=0):
+        super().__init__(TRANSPARENT_COLOR, x, y, size_x, size_y)
         
         self.current_items = []
         self.window.wm_attributes("-alpha", MAX_OPACITY)

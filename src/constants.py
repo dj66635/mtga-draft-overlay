@@ -7,8 +7,9 @@ import tkinter.font as tkfont
 DEBUG = "--debug" in sys.argv
 ARENA_FILE_PATH = os.getenv("ARENA_FILE_PATH")
 RATINGS_DB_PATH = os.getenv("RATINGS_DB_PATH")
-if not ARENA_FILE_PATH or not RATINGS_DB_PATH:
-    raise ValueError("ARENA_FILE_PATH or RATINGS_DB_PATH not set. Did you forget to load .env first?" )
+DECKS_PATH = os.getenv("DECKS_PATH")
+if not ARENA_FILE_PATH or not RATINGS_DB_PATH or not DECKS_PATH:
+    raise ValueError("ARENA_FILE_PATH, RATINGS_DB_PATH or DECKS_PATH not set. Did you forget to load .env first?" )
 
 # ------------
 
@@ -21,11 +22,12 @@ DECK_HEIGHT = 20
 DECK_WIDTH = 130
 
 FONTS = {
-    "rating":     ("Segoe UI",       8, "bold"),
-    "emoji":      ("Segoe UI Emoji", 9        ),
-    "deck_label": ("Arial",          8, "bold"),
-    "deck_card":  ("Arial",          7, "bold"),
-    "deck_count": ("Arial",         10, "bold"),
+    "rating"     : ("Segoe UI",       8, "bold"),
+    "emoji"      : ("Segoe UI Emoji", 9        ),
+    "select_deck": ("Arial",          8,       ),
+    "deck_label" : ("Arial",          8, "bold"),
+    "deck_card"  : ("Arial",          7, "bold"),
+    "deck_count" : ("Arial",         10, "bold"),
 }
 
 # ------------

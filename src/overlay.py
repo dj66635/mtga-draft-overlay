@@ -3,15 +3,19 @@ from .constants import TRANSPARENT_COLOR
 from .fade_effects import FadeEffects
 
 class BaseOverlay(FadeEffects):
-    def __init__(self, background):
+    def __init__(self, background, x=0, y=0, size_x=0, size_y=0, fade_step=0.05, fade_delay=20):
         self.window = tk.Toplevel()
         self.window.overrideredirect(True)
         self.window.attributes("-topmost", True)
 
         self.window.configure(bg=background)
         self.window.wm_attributes("-transparentcolor", TRANSPARENT_COLOR)
+        if size_x == 0 and size_y == 0:
+            self.window.geometry(f"+{x}+{y}")
+        else:
+            self.window.geometry(f"{size_x}x{size_y}+{x}+{y}")
 
-        self._init_fade(self.window)
+        self._init_fade(self.window, fade_step, fade_delay)
 
     def show(self, render_callback):
         # Fade out current content, run render_callback, then fade in.

@@ -1,6 +1,6 @@
 import sqlite3 
 import re
-from .constants import TOKEN_TO_COLOR, COLOR_ORDER_TO_LIST
+from .constants import TOKEN_TO_COLOR, COLOR_ORDER_TO_LIST, RATINGS_DB_PATH
 
 class Card:
     def __init__(self, grp_id, name, rarity, is_land, color_order, old_school_mana_text, types, collector_number, expansion_code, rating):
@@ -72,8 +72,8 @@ class Card:
 
 
 class DBQueries:
-    def __init__(self, ratings_db_path):
-        self.ratings_db_path = ratings_db_path
+    def __init__(self):
+        self.ratings_db_path = RATINGS_DB_PATH
 
     def get_card(self, card_id):
         conn = sqlite3.connect(self.ratings_db_path)
@@ -87,3 +87,17 @@ class DBQueries:
             return Card(grp_id, name, rarity, is_land, color_order, old_school_mana_text, types, collector_number, expansion_code, rating)
         else:
             return None
+        
+    def get_card_by_name(self, card_name):
+        conn = sqlite3.connect(self.ratings_db_path)
+        cur = conn.cursor()
+
+        cur.execute("SELECT * FROM Cards WHERE Name = ?", (card_name,)) # we dont care if theres more than one...
+        (grp_id, name, rarity, is_land, color_order, old_school_mana_text, types, collector_number, expansion_code, rating) = cur.fetchone()
+
+        conn.close()
+        if grp_id and name:
+            return Card(grp_id, name, rarity, is_land, color_order, old_school_mana_text, types, collector_number, expansion_code, rating)
+        else:
+            return None
+        
