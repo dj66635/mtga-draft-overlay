@@ -1,6 +1,9 @@
 import json
 from typing import List
+from .card import DBQueries
 
+def to_name(grp_ids):
+    return [DBQueries().get_card(grp_id).name for grp_id in grp_ids if DBQueries().get_card(grp_id)]
 
 def shorten(name, to=18):
     return name if len(name) < to else name[:(to-1)] + "..."

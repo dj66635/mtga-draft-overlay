@@ -1,5 +1,5 @@
 import tkinter as tk
-from .constants import TRANSPARENT_COLOR
+from .constants import TRANSPARENT_COLOR, MAX_OPACITY
 from .fade_effects import FadeEffects
 
 class BaseOverlay(FadeEffects):
@@ -10,6 +10,8 @@ class BaseOverlay(FadeEffects):
 
         self.window.configure(bg=background)
         self.window.wm_attributes("-transparentcolor", TRANSPARENT_COLOR)
+        self.window.wm_attributes("-alpha", MAX_OPACITY)
+
         if size_x == 0 and size_y == 0:
             self.window.geometry(f"+{x}+{y}")
         else:

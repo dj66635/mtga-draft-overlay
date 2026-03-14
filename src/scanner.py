@@ -11,16 +11,17 @@ from .constants import (
     EXPANSION_CODE_REGEX
 )
 from .utils import detect_string
-from .events import DraftPackEvent, DraftStartEvent, DraftEndEvent, DeckListEvent, DeckDrawEvent, MatchEndEvent
+from .events import DraftPackEvent, DraftStartEvent, DraftEndEvent, DeckListEvent, DeckDrawEvent, GameEndEvent, MatchEndEvent, OppRevealEvent
 from .log_model import LogEntry, GREEntry, DraftEntry, ClientEntry
 
 logger = logging.getLogger(__name__)
 
 
-class MatchContext:
+class GameContext:
     def __init__(self):
         self.deck = Deck()
         self.iid_to_grpid = {}
+        self.revealed_iids = set()
         self.seat_id = 0
         self.initial_hand_set = False
         self.pre_mulligan_hand = None
@@ -41,6 +42,8 @@ class ArenaScanner:
         self._json_buffer = None
 
         self.handlers = [
+            self._handle_context, # order matters, this needs to happen first
+
             self._handle_draft_pack,
             self._handle_draft_start,
             self._handle_draft_end,
@@ -49,12 +52,14 @@ class ArenaScanner:
 
             self._handle_initial_hand, 
             self._handle_mulligan,
-
             self._handle_card_draw,
-            self._handle_match_end
+
+            self._handle_game_end,
+
+            self._handle_opp_card_reveal
         ]
 
-        self.context = MatchContext()
+        self.context = GameContext()
         
 
     def check_log_rotation(self):
@@ -87,13 +92,6 @@ class ArenaScanner:
     
 
     def read_entry(self, line: str):
-        """
-        Read a single log line. Handles:
-        - Plain text lines
-        - JSON lines (single-line or multi-line pretty-printed)
-        - Lines with a text prefix before JSON
-        """
-
         # If we're currently accumulating a multi-line JSON, append this line
         if self._json_buffer is not None:
             self._json_buffer.append(line)
@@ -155,13 +153,22 @@ class ArenaScanner:
         return None
     
 
+    def _handle_context(self, entry: LogEntry):
+        if entry.json:
+            gre_entry = GREEntry(entry.json)
+            for msg in gre_entry.gre_messages:
+                self.update_seat_id(msg)
+                if msg.game_state:
+                    self.update_iids(msg.game_state)
+                    self.update_iid_cache(msg.game_state)
+        return None
+
+
     def _handle_decklist(self, entry: LogEntry):
         if entry.json:
             deck_list = []
             gre_entry = GREEntry(entry.json)
             for msg in gre_entry.gre_messages:
-                self.update_seat_id(msg)
-
                 if msg.connect_resp and msg.connect_resp.deck_list():   
                     deck_list = msg.connect_resp.deck_list()            
             
@@ -174,7 +181,7 @@ class ArenaScanner:
                 counts = Counter(deck_list)
                 deck_cards = [DeckCard(self.ratings_db_handle.get_card(grp_id), count) for grp_id, count in counts.items()]
                 self.context.deck = Deck(cards = deck_cards)
-                logger.debug(f"Deck loaded\n {self.context.deck}: {entry.json}\n") # TODO: print deck
+                logger.debug(f"Deck loaded\n {self.context.deck}: {entry.json}\n")
                 return DeckListEvent(self.context.deck)
         return None
     
@@ -207,11 +214,7 @@ class ArenaScanner:
             gre_entry = GREEntry(entry.json)
 
             for msg in gre_entry.gre_messages:
-                self.update_seat_id(msg)
-
                 if msg.game_state:
-                    self.update_iid_cache(msg.game_state)
-
                     for zone in msg.game_state.zones:
                         if zone.type == "ZoneType_Hand" and zone.owner_seat_id == self.context.seat_id:
                             hand_grpids = [self.context.iid_to_grpid.get(iid) 
@@ -229,14 +232,10 @@ class ArenaScanner:
             gre_entry = GREEntry(entry.json)
 
             for msg in gre_entry.gre_messages:
-                self.update_seat_id(msg)
-
                 if msg.game_state:
-                    self.update_iid_cache(msg.game_state)
-
                     zone_map = {}
                     for zone in msg.game_state.zones:
-                        if zone.owner_seat_id == self.context.seat_id:
+                        if zone.owner_seat_id == self.context.seat_id or zone.owner_seat_id is None:
                             zone_map[zone.zone_id] = zone.type
 
                     for annotation in msg.game_state.annotations: 
@@ -262,14 +261,58 @@ class ArenaScanner:
                 return DeckDrawEvent(drawn_grpids)
         return None
 
+
+    def _handle_opp_card_reveal(self, entry: LogEntry):
+        if entry.json:
+            drawn_grpids = []
+            gre_entry = GREEntry(entry.json)
+
+            for msg in gre_entry.gre_messages:
+                if msg.game_state:
+                    zone_map = {}
+                    for zone in msg.game_state.zones:
+                        if zone.owner_seat_id != self.context.seat_id or zone.owner_seat_id is None: # opponent zones
+                            zone_map[zone.zone_id] = zone.type
+
+                    for annotation in msg.game_state.annotations: 
+                        # Transfers from Library to Anywhere
+                        if annotation.type == "AnnotationType_ZoneTransfer":
+                            for detail in annotation.details:
+                                if detail.key == "zone_src":
+                                    zone_src = zone_map.get(detail.value_int32)
+
+                                elif detail.key == "zone_dest":
+                                    zone_dest = zone_map.get(detail.value_int32)
+
+                                # elif detail.key == "category":
+                                #     category = detail.value_string
+
+                            # there could be more than one annotation with events so do not return here
+                            if (zone_src == "ZoneType_Hand" and zone_dest != "ZoneType_Library" 
+                                or zone_src == "ZoneType_Library" and zone_dest != "ZoneType_Hand"):
+                                for iid in annotation.affected_ids:
+                                    if iid in self.context.iid_to_grpid and iid not in self.context.revealed_iids:
+                                        drawn_grpids.append(self.context.iid_to_grpid.get(iid))
+                                        self.context.revealed_iids.add(iid)
+                                
+            if drawn_grpids:
+                return OppRevealEvent(drawn_grpids)
+        return None
     
-    def _handle_match_end(self, entry: LogEntry):
+
+    def _handle_game_end(self, entry: LogEntry):
         if entry.json:
             gre_entry = GREEntry(entry.json)
             for msg in gre_entry.gre_messages:
-                if msg.result():
+                scope = msg.result()
+                if scope == "MatchScope_Game":
+                    logger.debug(f"Game ended: {entry.json}")
+                    self.context = GameContext()
+                    return GameEndEvent()
+            
+                elif scope == "MatchScope_Match":
                     logger.debug(f"Match ended: {entry.json}")
-                    self.context = MatchContext()
+                    self.context = GameContext()
                     return MatchEndEvent()
         return None
 
@@ -286,3 +329,18 @@ class ArenaScanner:
         for obj in game_state.game_objects:
             if obj.instance_id is not None and obj.grp_id is not None:
                 self.context.iid_to_grpid[obj.instance_id] = obj.grp_id
+
+    def update_iids(self, game_state):
+        for annotation in game_state.annotations:
+            if annotation.type == "AnnotationType_ObjectIdChanged":
+                for detail in annotation.details:
+                    if detail.key == "orig_id":
+                        old_id = detail.value_int32
+                    if detail.key == "new_id":
+                        new_id = detail.value_int32
+
+                if old_id is not None and old_id in self.context.revealed_iids:
+                    self.context.revealed_iids.remove(old_id)
+                    self.context.revealed_iids.add(new_id)
+                    logger.debug(f"Updated iid {old_id} -> {new_id}")
+            

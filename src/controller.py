@@ -11,10 +11,12 @@ from .events import (
     DraftEndEvent,
     DeckListEvent,
     DeckDrawEvent,
+    GameEndEvent,
     MatchEndEvent,
     OppDeckSetEvent,
     OppDeckClearEvent,
-    OppDeckResetEvent
+    OppDeckResetEvent,
+    OppRevealEvent
 )
 from .constants import (
     ARENA_FILE_PATH, 
@@ -22,6 +24,7 @@ from .constants import (
     FONTS,
     DECK_WIDTH
 )
+from .utils import to_name
 
 logger = logging.getLogger(__name__)
 
@@ -114,14 +117,28 @@ class OverlayController:
             self.deck_overlay.load_deck(event.deck)
 
         elif isinstance(event, DeckDrawEvent):
-            logger.info(f"Removed from deck: {event.drawn_grp_ids}")
+            logger.info(f"Removed from deck: {event.drawn_grp_ids} - {to_name(event.drawn_grp_ids)}")
             for grp_id in event.drawn_grp_ids:  
                 self.scanner.context.deck.draw_card(grp_id)
                 self.deck_overlay.refresh_card_count(grp_id)
 
-        elif isinstance(event, MatchEndEvent):
-            logger.info("Match ended") # right now i dont differentiate between "game" and "match" which would be useful for OppDeckEvents
+        elif isinstance(event, OppRevealEvent):
+            logger.info(f"Opponent revealed: {event.revealed_grp_ids} - {to_name(event.revealed_grp_ids)}")
+            for grp_id in event.revealed_grp_ids: 
+                for deck in self.opp_deck_selector.decklists:
+                    deck.draw_card(grp_id)
+                self.opp_deck_overlay.refresh_card_count(grp_id)
+
+        elif isinstance(event, GameEndEvent):
+            logger.info("Game ended") 
             self.deck_overlay.clear()
+            self.opp_deck_selector.reset_decks()
+
+        elif isinstance(event, MatchEndEvent):
+            logger.info("Match ended") 
+            self.deck_overlay.clear()
+            self.opp_deck_selector.reset_decks()
+            self.opp_deck_overlay.clear()
 
      
     def _opp_deck_set(self, event):

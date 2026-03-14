@@ -12,15 +12,16 @@ class Deck:
         if card:
             card.draw(amount)
 
+    def get_card_by_id(self, card_id, sideboard):
+        for dc in self.cards:
+            if dc.is_my_id(card_id) and dc.sideboard == sideboard:
+                return dc
+        return None
+
     def reset_count(self):
         for card in self.cards:
             card.left = card.total
 
-    def get_card_by_id(self, card_id, sideboard):
-        for dc in self.cards:
-            if dc.card.grp_id == card_id and dc.sideboard == sideboard:
-                return dc
-        return None
 
     def grouped_for_overlay(self):
         sorted_cards = sorted(self.cards, key=lambda dc: dc.card.sort_by_cost())
@@ -37,7 +38,7 @@ class Deck:
     @classmethod
     def from_text(cls, text: str):
         deck_cards = []
-        section = None
+        section = "deck" # by default if no "Deck" label exists
 
         for raw_line in text.splitlines():
             line = raw_line.strip()
@@ -62,22 +63,29 @@ class Deck:
                 count = int(parts[0])
                 card_name = parts[1]
 
-                card = DBQueries().get_card_by_name(card_name)
-                if card:
-                    deck_cards.append(DeckCard(card, count, section == "sideboard"))
+                cards = DBQueries().get_card_by_name(card_name)
+                if cards:
+                    deck_cards.append(DeckCard(cards[0], count, section == "sideboard", alts=cards[1:]))
 
         return Deck(name, deck_cards)
 
 
 class DeckCard:
-    def __init__(self, card, total, sideboard=False):
+    def __init__(self, card, total, sideboard=False, alts=[]):
         self.card = card
         self.total = total
         self.left = total
         self.sideboard = sideboard
+        self.alts = alts # handle cards with different grp_id that are essentially the same, like lands from different expansions
 
     def draw(self, amount=1):
         self.left = max(self.left - amount, 0)
+
+    def is_my_id(self, grp_id):
+        for card in self.alts:
+            if card.grp_id == grp_id:
+                return True
+        return self.card.grp_id == grp_id 
     
     def printable(self):
         return (self.card.grp_id, shorten(self.card.name), self.total, self.left, [COLOR_TO_HEX[c] for c in self.card.colors()], self.sideboard)

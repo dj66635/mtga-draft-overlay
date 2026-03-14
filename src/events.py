@@ -13,6 +13,8 @@ class DraftStartEvent:
 class DraftEndEvent:
     pass
 
+# --------
+
 @dataclass
 class DeckListEvent:
     deck: Deck
@@ -20,6 +22,10 @@ class DeckListEvent:
 @dataclass
 class DeckDrawEvent:
     drawn_grp_ids: list # (name, total, left, colors)
+
+@dataclass
+class GameEndEvent:
+    pass
 
 @dataclass
 class MatchEndEvent:
@@ -38,3 +44,7 @@ class OppDeckClearEvent:
 @dataclass
 class OppDeckResetEvent:
     pass
+
+@dataclass
+class OppRevealEvent:
+    revealed_grp_ids: list

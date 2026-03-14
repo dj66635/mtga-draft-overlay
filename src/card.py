@@ -1,6 +1,9 @@
 import sqlite3 
 import re
+import logging
 from .constants import TOKEN_TO_COLOR, COLOR_ORDER_TO_LIST, RATINGS_DB_PATH
+
+logger = logging.getLogger(__name__)
 
 class Card:
     def __init__(self, grp_id, name, rarity, is_land, color_order, old_school_mana_text, types, collector_number, expansion_code, rating):
@@ -76,28 +79,25 @@ class DBQueries:
         self.ratings_db_path = RATINGS_DB_PATH
 
     def get_card(self, card_id):
-        conn = sqlite3.connect(self.ratings_db_path)
-        cur = conn.cursor()
+        with sqlite3.connect(self.ratings_db_path) as conn:
+            cur = conn.execute("SELECT * FROM Cards WHERE GrpId = ?", (card_id,))
+            row = cur.fetchone()
 
-        cur.execute("SELECT * FROM Cards WHERE GrpId = ?", (card_id,))
-        (grp_id, name, rarity, is_land, color_order, old_school_mana_text, types, collector_number, expansion_code, rating) = cur.fetchone()
+            if not row: 
+                logger.debug(f"Could not find {card_id}")
+                return None
 
-        conn.close()
-        if grp_id and name:
-            return Card(grp_id, name, rarity, is_land, color_order, old_school_mana_text, types, collector_number, expansion_code, rating)
-        else:
-            return None
+            return Card(*row)
         
     def get_card_by_name(self, card_name):
-        conn = sqlite3.connect(self.ratings_db_path)
-        cur = conn.cursor()
+        with sqlite3.connect(self.ratings_db_path) as conn:
+            cur = conn.execute("SELECT * FROM Cards WHERE Name = ?", (card_name,))
+            rows = cur.fetchall()
 
-        cur.execute("SELECT * FROM Cards WHERE Name = ?", (card_name,)) # we dont care if theres more than one...
-        (grp_id, name, rarity, is_land, color_order, old_school_mana_text, types, collector_number, expansion_code, rating) = cur.fetchone()
+            if not rows:
+                logger.debug(f"Could not find {card_name}")
+                return []
 
-        conn.close()
-        if grp_id and name:
-            return Card(grp_id, name, rarity, is_land, color_order, old_school_mana_text, types, collector_number, expansion_code, rating)
-        else:
-            return None
+            return [Card(*row) for row in rows]
+            
         

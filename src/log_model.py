@@ -110,11 +110,13 @@ class GREMessage:
             return ConnectResponse(connect_resp)
         return None
     
-    # Just for game end: intermissionReq -> result
+    # Just for game/match end: intermissionReq.result.scope
     def result(self):
         intermission_req = self.raw.get("intermissionReq")
         if intermission_req:
-            return intermission_req.get("result")
+            result = intermission_req.get("result")
+            if result:
+                return result.get("scope")
         return None
     
 

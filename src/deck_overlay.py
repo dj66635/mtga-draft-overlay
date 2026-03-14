@@ -112,10 +112,12 @@ class DeckOverlay(BaseOverlay):
 
 
     def refresh_card_count(self, grp_id, sideboard=False):
+        if not self.deck: return
         refs = self.card_obj_refs if not sideboard else self.sideboard_card_obj_refs
-        if grp_id in refs:
-            dc = self.deck.get_card_by_id(grp_id, sideboard)
-            canvas, text_id, count_id, box_id, old_color = refs[grp_id]
+        dc = self.deck.get_card_by_id(grp_id, sideboard) # pick this first to catch alt ids
+
+        if dc and dc.card.grp_id in refs:
+            canvas, text_id, count_id, box_id, old_color = refs[dc.card.grp_id]
             canvas.itemconfig(count_id, text=f"{dc.left}/{dc.total}")
 
             if dc.left == 0:

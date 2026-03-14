@@ -17,7 +17,6 @@ class DraftOverlay(BaseOverlay):
         super().__init__(TRANSPARENT_COLOR, x, y, size_x, size_y)
         
         self.current_items = []
-        self.window.wm_attributes("-alpha", MAX_OPACITY)
         
         hwnd = ctypes.windll.user32.GetParent(self.window.winfo_id())
         self._make_click_through(hwnd)
