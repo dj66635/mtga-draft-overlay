@@ -2,7 +2,7 @@ import sqlite3
 import csv
 import re
 import os
-import sys
+import argparse
 import shutil
 from dotenv import load_dotenv
 
@@ -61,7 +61,7 @@ def find_mtga_file_backup(folder_path):
 
 
 
-def add_expansions(expansions):
+def build_database():
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     
@@ -69,6 +69,7 @@ def add_expansions(expansions):
     CREATE TABLE IF NOT EXISTS Cards (
         GrpId INTEGER PRIMARY KEY,
         Name TEXT NOT NULL,
+        AltName TEXT,
         Rarity INTEGER NOT NULL,
         IsLand INTEGER NOT NULL,
         ColorOrder INTEGER NOT NULL,
@@ -84,17 +85,23 @@ def add_expansions(expansions):
     cur.execute(f"ATTACH DATABASE '{MTGA_DB_BACKUP_PATH}' AS mtgaDB;") 
 
     query = f"""
-    SELECT c.GrpId, l.Loc, c.Rarity, c.Order_LandLast, c.Order_ColorOrder, c.OldSchoolManaText, c.Types, c.CollectorNumber, c.ExpansionCode
+    SELECT c.GrpId, l.Loc, alt.Loc, c.Rarity, c.Order_LandLast, c.Order_ColorOrder, c.OldSchoolManaText, c.Types, c.CollectorNumber, c.ExpansionCode
     FROM mtgaDB.Cards c
     JOIN mtgaDB.Localizations_enUS l
         ON c.TitleId = l.LocId
-    AND l.Formatted = 1
+        AND l.Formatted = 1
+    LEFT JOIN mtgaDB.Localizations_enUS alt
+        ON c.InterchangeableTitleId = alt.LocId
+        AND alt.Formatted = 1
     """
     cur.execute(query)
     rows = cur.fetchall()
 
-    for grp_id, name, rarity, order_land_last, order_color_order, old_school_mana_text, types, collector_number_text, expansion_code in rows:
-        cleaned = clean_name(name)
+    cur.execute("DETACH DATABASE mtgaDB;")
+
+    for grp_id, name, alt_name, rarity, order_land_last, order_color_order, old_school_mana_text, types, collector_number_text, expansion_code in rows:
+        cleaned_name = clean_name(name)
+        cleaned_alt_name = clean_name(alt_name) if alt_name else None
         is_land = order_land_last if order_land_last is not None else 0 # 1: true ; 0/None: false
         color_order = order_color_order if order_color_order is not None else 100 # will be ordered last, should not happen
         try:
@@ -103,10 +110,18 @@ def add_expansions(expansions):
             collector_number = 0
 
         cur.execute("""
-            INSERT OR IGNORE INTO Cards (GrpId, Name, Rarity, IsLand, ColorOrder, OldSchoolManaText, Types, CollectorNumber, ExpansionCode)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (grp_id, cleaned, rarity, is_land, color_order, old_school_mana_text, types, collector_number, expansion_code))
+            INSERT OR IGNORE INTO Cards (GrpId, Name, AltName, Rarity, IsLand, ColorOrder, OldSchoolManaText, Types, CollectorNumber, ExpansionCode)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (grp_id, cleaned_name, cleaned_alt_name, rarity, is_land, color_order, old_school_mana_text, types, collector_number, expansion_code))
+    
+    conn.commit()
+    conn.close()
+    print(f"✅ Base database successfully!")
 
+
+def add_expansion_ratings(expansions):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
 
     for expansion in expansions:
         csv_path = f"{expansion}TierList.csv"
@@ -139,10 +154,9 @@ def add_expansions(expansions):
         except FileNotFoundError:
             print(f"⚠️ CSV file missing for {expansion}, skipping ratings.")
     
-        print(f"✅ Database for expansion {expansion} built successfully!")
+        print(f"✅ Ratings for expansion {expansion} added successfully!")
 
     conn.commit()
-    cur.execute("DETACH DATABASE mtgaDB;")
     conn.close()
 
 
@@ -155,10 +169,25 @@ def main():
         print("❌ No MTGA database found.")
         return
 
-    # If expansions passed as arguments, use only those
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--build",
+        action="store_true",
+        help="Build database from MTGA's one"
+    )
+
+    parser.add_argument(
+        "expansions",
+        nargs="*",
+        help="Add expansions ratings"
+    )
+
+    args = parser.parse_args()
+
     expansions = list(EXPANSION_SETS.keys())
-    if len(sys.argv) > 1:
-        requested = [arg.upper() for arg in sys.argv[1:]]
+    if args.expansions:
+        requested = [arg.upper() for arg in args.expansions]
         invalid = [exp for exp in requested if exp not in EXPANSION_SETS]
         if invalid:
             print(f"❌ Unknown expansion(s): {invalid}")
@@ -166,9 +195,13 @@ def main():
             return
         expansions = requested
 
+    if args.build:
+        print("Running build step...")
+        build_database()
+
     print(f"Processing {expansions}...")
-    add_expansions(expansions)
-    
+    add_expansion_ratings(expansions)
+
     if os.path.exists(MTGA_DB_BACKUP_PATH):
         os.remove(MTGA_DB_BACKUP_PATH)
 

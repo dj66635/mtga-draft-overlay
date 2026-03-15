@@ -6,9 +6,10 @@ from .constants import TOKEN_TO_COLOR, COLOR_ORDER_TO_LIST, RATINGS_DB_PATH
 logger = logging.getLogger(__name__)
 
 class Card:
-    def __init__(self, grp_id, name, rarity, is_land, color_order, old_school_mana_text, types, collector_number, expansion_code, rating):
+    def __init__(self, grp_id, name, alt_name, rarity, is_land, color_order, old_school_mana_text, types, collector_number, expansion_code, rating):
         self.grp_id = grp_id
         self.name = name
+        self.alt_name = alt_name
         self.rarity = rarity # 0: token, 1: land, 2: common, 3: uncommon, 4: rare, 5: mythic
         self.is_land = bool(is_land) # 1: land ; 0: non-land
         self.color_order = color_order
@@ -91,7 +92,7 @@ class DBQueries:
         
     def get_card_by_name(self, card_name):
         with sqlite3.connect(self.ratings_db_path) as conn:
-            cur = conn.execute("SELECT * FROM Cards WHERE Name = ?", (card_name,))
+            cur = conn.execute("SELECT * FROM Cards WHERE Name = ? OR AltName = ?", (card_name, card_name))
             rows = cur.fetchall()
 
             if not rows:

@@ -76,28 +76,12 @@ def process_deck(deck_text, deck_name):
     deck_text = re.sub(r'\n{2,}', '\n\nSideboard\n\n', deck_text)
     deck_text = f"Name {deck_name}\n\n{deck_text}"
 
-    # CORRECT SOME NAMES. TODO FIX DATABASE
     lines = deck_text.split("\n")
     new_lines = []
 
     for line in lines:
-        if "Superior Spider-Man" in line:
-            line = line.replace("Superior Spider-Man", "Kavaero, Mind-Bitten")
-
-        if "Spider-Sense" in line:
-            line = line.replace("Spider-Sense", "Detect Intrusion")
-
-        if "Hydro-Man, Fluid Felon" in line:
-            line = line.replace("Hydro-Man, Fluid Felon", "Belion, the Parched")
-
-        if "Spider Manifestation" in line:
-            line = line.replace("Spider Manifestation", "Leyline Weaver")
-
-        if "Sandman, Shifting Scoundrel" in line:
-            line = line.replace("Sandman, Shifting Scoundrel", "The Scouring Stormsoul")
-
-        if "Interdimensional Web Watch" in line:
-            line = line.replace("Interdimensional Web Watch", "Reality Fulcrum")
+        # if "Superior Spider-Man" in line:
+        #    line = line.replace("Superior Spider-Man", "Kavaero, Mind-Bitten")
 
         if "/" in line:
             line = line.replace("/", " // ")
